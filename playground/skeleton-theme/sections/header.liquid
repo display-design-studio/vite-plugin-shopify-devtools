@@ -1,0 +1,93 @@
+<header class="mx-5">
+    <h2 class="header__title">
+        {{ shop.name | link_to: routes.root_url }}
+    </h2>
+
+    <div class="header__menu">
+        {% for link in section.settings.menu.links %}
+            {{ link.title | link_to: link.url }}
+        {% endfor %}
+    </div>
+
+    <div class="header__icons">
+        {% if shop.customer_accounts_enabled %}
+            <shopify-account menu="{{ section.settings.customer_account_menu }}">
+                {{ 'customers.account' | t }}
+            </shopify-account>
+        {% endif %}
+
+        <a
+            href="{{ routes.search_url }}"
+            data-js="search-open"
+            aria-haspopup="dialog"
+            aria-controls="search-drawer"
+        >
+            {{ 'search.title' | t }}
+        </a>
+
+        <a
+            href="{{ routes.cart_url }}"
+            data-js="cart-open"
+            aria-haspopup="dialog"
+            aria-controls="cart-drawer"
+        >
+            <sup
+                data-js="cart-count"
+                {% if cart.item_count < 1 %}
+                    hidden
+                {% endif %}
+            >
+                {{- cart.item_count -}}
+            </sup>
+
+            {{ 'cart.title' | t }}
+        </a>
+    </div>
+</header>
+
+{% stylesheet %}
+    header {
+        height: 5rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    header a {
+        position: relative;
+        text-decoration: none;
+        color: var(--color-foreground);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    header a sup {
+        position: absolute;
+        left: 100%;
+        overflow: hidden;
+        max-width: var(--page-margin);
+    }
+    header .header__menu,
+    header .header__icons {
+        display: flex;
+        gap: 1rem;
+    }
+{% endstylesheet %}
+
+{% schema %}
+{
+    "name": "t:general.header",
+    "settings": [
+        {
+            "type": "link_list",
+            "id": "menu",
+            "label": "t:labels.menu"
+        },
+        {
+            "type": "link_list",
+            "id": "customer_account_menu",
+            "label": "t:labels.customer_account_menu",
+            "default": "customer-account-main-menu"
+        }
+    ]
+}
+{% endschema %}

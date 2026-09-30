@@ -1,0 +1,80 @@
+{
+  "general": {
+    "skip_to_content": "Skip to content"
+  },
+  "404": {
+    "title": "404",
+    "not_found": "Page not found.",
+    "back_to_shopping": "Back to shopping"
+  },
+  "blog": {
+    "article_comments": "Comments",
+    "article_metadata_html": "{{ date }} by {{ author }}",
+    "comment_form_body": "Comment",
+    "comment_form_email": "Email",
+    "comment_form_name": "Name",
+    "comment_form_submit": "Post",
+    "comment_form_title": "Add a comment"
+  },
+  "cart": {
+    "checkout": "Checkout",
+    "continue_shopping": "Continue shopping",
+    "empty": "Your cart is empty.",
+    "note": "Order note",
+    "order_reference": "Order reference",
+    "subtotal": "Subtotal",
+    "title": "Cart",
+    "update": "Update",
+    "remove": "Remove",
+    "view_cart": "View cart"
+  },
+  "customers": {
+    "account": "Account",
+    "login": {
+      "email": "Email",
+      "password": "Password",
+      "submit": "Sign in",
+      "title": "Login"
+    }
+  },
+  "collections": {
+    "title": "Collections",
+    "sort_by": "Sort by",
+    "apply_filters": "Apply filters",
+    "clear_all": "Clear all",
+    "filters": "Filters",
+    "close_filters": "Close filters drawer",
+    "no_products_found": "No products found for current filters.",
+    "load_more": "Load more",
+    "quick_buy": "Quick buy",
+    "quick_buy_loading": "Adding...",
+    "quick_buy_success": "Added",
+    "quick_buy_error": "Try again",
+    "view_options": "View options"
+  },
+  "gift_card": {
+    "add_to_apple_wallet": "Add to Apple Wallet",
+    "card": "Gift card",
+    "expired": "This gift card has expired",
+    "expires_on": "Expires on {{ expires_on }}",
+    "use_at_checkout": "Use this gift card at checkout"
+  },
+  "password": {
+    "title": "This shop is private",
+    "password": "Password",
+    "enter": "Enter"
+  },
+  "search": {
+    "title": "Search",
+    "placeholder": "Search articles, pages, or products",
+    "submit": "Search",
+    "no_results_html": "No results found for {{ terms }}",
+    "results_for_html": "{{ count }} results found for {{ terms }}",
+    "searching": "Searching...",
+    "start_typing": "Start typing to see quick results.",
+    "products": "Products",
+    "pages": "Pages",
+    "articles": "Articles",
+    "no_quick_matches": "No quick matches. Press Enter for full results."
+  }
+}

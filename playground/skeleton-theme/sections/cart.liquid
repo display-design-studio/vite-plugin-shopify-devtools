@@ -1,0 +1,60 @@
+{% comment %}
+  This section is used in the cart template to render /cart page with an
+  overview of the items in customer's cart.
+
+  https://shopify.dev/docs/storefronts/themes/architecture/templates/cart
+{% endcomment %}
+
+<h1>{{ 'cart.title' | t }}</h1>
+
+<div data-js="cart-page" data-section-id="{{ section.id }}" data-currency="{{ cart.currency.iso_code }}" class="space-y-4">
+  <p data-js="cart-page-status" role="status" aria-live="polite" class="sr-only"></p>
+  <p data-js="cart-page-error" role="alert" class="min-h-5 text-sm text-red-700"></p>
+
+  <div data-js="cart-page-empty" {% if cart.item_count > 0 %}hidden{% endif %}>
+    <p>{{ 'cart.empty' | t }}</p>
+    <a href="{{ routes.all_products_collection_url }}" class="underline">{{ 'cart.continue_shopping' | t }}</a>
+  </div>
+
+  <ul data-js="cart-page-items" class="space-y-3" {% if cart.item_count == 0 %}hidden{% endif %}>
+    {% for item in cart.items %}
+      {% render 'cart-line-item', item: item, line_index: forloop.index, context: 'page' %}
+    {% endfor %}
+  </ul>
+
+  <div data-js="cart-page-footer" class="space-y-3" {% if cart.item_count == 0 %}hidden{% endif %}>
+    <p class="text-sm">{{ 'cart.subtotal' | t }}: <strong data-js="cart-page-subtotal">{{ cart.total_price | money }}</strong></p>
+
+    <form action="{{ routes.cart_url }}" method="post" class="space-y-3 border p-3" data-js="cart-page-update-form">
+      <label for="CartNote" class="block text-sm font-medium">{{ 'cart.note' | t }}</label>
+      <textarea
+        id="CartNote"
+        name="note"
+        rows="3"
+        class="w-full border px-3 py-2"
+      >{{ cart.note }}</textarea>
+
+      <label for="CartOrderReference" class="block text-sm font-medium">{{ 'cart.order_reference' | t }}</label>
+      <input
+        id="CartOrderReference"
+        type="text"
+        name="attributes[order_reference]"
+        value="{{ cart.attributes.order_reference | escape }}"
+        class="w-full border px-3 py-2"
+      >
+
+      <button type="submit" name="update" data-js="cart-page-update-submit" class="border px-3 py-2">{{ 'cart.update' | t }}</button>
+    </form>
+
+    <form action="{{ routes.cart_url }}" method="post">
+      <button type="submit" name="checkout" class="border px-3 py-2">{{ 'cart.checkout' | t }}</button>
+    </form>
+  </div>
+</div>
+
+{% schema %}
+{
+  "name": "t:general.cart",
+  "settings": []
+}
+{% endschema %}

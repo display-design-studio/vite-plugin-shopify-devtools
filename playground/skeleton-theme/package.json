@@ -1,0 +1,31 @@
+{
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.11.0",
+    "npm-run-all": "^4.1.5",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "typescript-eslint": "^8.70.1",
+    "vite": "^8.3.1",
+    "vite-plugin-shopify-devtools": "file:../..",
+    "vite-plugin-shopify": "^5.0.0"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "shopify-devtools dev --environment development --live-reload full-page",
+    "build": "vite build",
+    "dev:remote": "SHOPIFY_VITE_TUNNEL=true shopify-devtools dev --environment development --live-reload full-page",
+    "deploy": "run-s \"vite:build\" \"shopify:push -- {@}\" --",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "shopify:dev": "shopify theme dev --environment development --live-reload full-page",
+    "shopify:push": "shopify theme push",
+    "theme-check": "shopify theme check",
+    "typecheck": "tsc --noEmit",
+    "vite:dev": "vite",
+    "vite:build": "vite build"
+  }
+}

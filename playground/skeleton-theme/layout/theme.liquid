@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="{{ request.locale.iso_code }}">
+    <head>
+        {% # Social, title, etc. %}
+        {% render 'meta-tags' %}
+
+        {%- liquid
+            render 'vite-tag' with 'css/main.css'
+            render 'vite-tag' with 'ts/theme.ts'
+
+            case request.page_type
+                when 'index'
+                    render 'vite-tag' with 'ts/index.ts'
+                when 'product'
+                    render 'vite-tag' with 'ts/product.ts'
+                when 'collection'
+                    render 'vite-tag' with 'ts/collection.ts'
+                when 'list-collections'
+                    render 'vite-tag' with 'ts/list-collections.ts'
+                when 'cart'
+                    render 'vite-tag' with 'ts/cart.ts'
+                when 'search'
+                    render 'vite-tag' with 'ts/search.ts'
+                when 'blog'
+                    render 'vite-tag' with 'ts/blog.ts'
+                when 'article'
+                    render 'vite-tag' with 'ts/article.ts'
+                when 'page'
+                    render 'vite-tag' with 'ts/page.ts'
+                when '404'
+                    render 'vite-tag' with 'ts/404.ts'
+            endcase
+        -%}
+        {{ content_for_header }}
+    </head>
+
+    <body>
+        <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:bg-white focus:px-4 focus:py-2">
+            {{ 'general.skip_to_content' | t }}
+        </a>
+
+        {% sections 'header-group' %}
+
+        <main id="main-content">
+            {{ content_for_layout }}
+        </main>
+
+        {% section 'cart-drawer' %}
+        {% section 'search-drawer' %}
+
+        {% sections 'footer-group' %}
+    </body>
+</html>
