@@ -4,17 +4,55 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 const section = { id: 'section:hero', kind: 'section', file: 'sections/hero.liquid', line: 1 }
 const marker = btoa(JSON.stringify(section))
 let client: typeof import('../src/client.js')
+let nativePanel: HTMLDivElement
+const rpcCall = vi.fn(async () => ({ ok: true }))
 
 beforeAll(async () => {
-  globalThis.__SHOPIFY_DEVTOOLS_CONFIG__ = { token: 'session-token', endpoint: '/__shopify-devtools/open' }
-  globalThis.fetch = vi.fn(async () => new Response('{"ok":true}', { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch
   document.body.innerHTML = `<!--shopify-devtools:start:${marker}--><section id="shopify-section-hero" class="hero">Hello</section><!--shopify-devtools:end:${marker}-->`
   client = await import('../src/client.js')
+  nativePanel = document.createElement('div')
+  document.documentElement.append(nativePanel)
+  let mount: ((panel: HTMLElement) => void) | undefined
+  client.default({
+    rpc: { call: rpcCall },
+    current: {
+      domElements: {},
+      events: {
+        on: (event: string, handler: (panel: HTMLElement) => void) => { if (event === 'dom:panel:mounted') mount = handler },
+      },
+    },
+  } as never)
+  mount?.(nativePanel)
 })
 
-afterAll(() => document.querySelector('shopify-liquid-devtools')?.remove())
+afterAll(() => nativePanel.remove())
 
 describe('browser panel', () => {
+  it('mounts inside the native Vite DevTools custom-render panel', () => {
+    const host = nativePanel.querySelector('shopify-liquid-devtools')
+    expect(host).toBeTruthy()
+    expect(host?.hasAttribute('data-vite-devtools-panel')).toBe(true)
+    expect(host?.shadowRoot?.querySelector('#vite-devtools-native-layout')?.textContent).toContain('#toolbar{display:none')
+    const inspector = host?.shadowRoot?.querySelector('#panel-inspect') as HTMLButtonElement
+    expect(inspector).toBeTruthy()
+    inspector.click()
+    expect(inspector.getAttribute('aria-pressed')).toBe('true')
+    inspector.click()
+  })
+
+  it('mounts immediately when Vite created the panel before loading the renderer', () => {
+    const panel = document.createElement('div')
+    client.default({
+      rpc: { call: rpcCall },
+      current: {
+        domElements: { panel },
+        events: { on: vi.fn() },
+      },
+    } as never)
+    expect(panel.querySelector('shopify-liquid-devtools')).toBeTruthy()
+    panel.remove()
+  })
+
   it('mounts in Shadow DOM and renders the Liquid tree', () => {
     const host = document.querySelector('shopify-liquid-devtools')
     expect(host?.shadowRoot).toBeTruthy()
@@ -23,15 +61,25 @@ describe('browser panel', () => {
     expect(host?.shadowRoot?.textContent).toContain('hero.liquid')
   })
 
-  it('synchronizes tree selection and sends authenticated open-editor requests', async () => {
+  it('synchronizes tree selection and opens the editor through RPC', async () => {
     const shadow = document.querySelector('shopify-liquid-devtools')?.shadowRoot
     ;(shadow?.querySelector('#tree button') as HTMLButtonElement).click()
     expect(shadow?.querySelector('#details')?.textContent).toContain('sections/hero.liquid')
     expect(shadow?.querySelector('#details')?.textContent).toContain('Line1')
     ;(shadow?.querySelector('#details button') as HTMLButtonElement).click()
-    await vi.waitFor(() => expect(fetch).toHaveBeenCalledWith('/__shopify-devtools/open', expect.objectContaining({
-      headers: expect.objectContaining({ authorization: 'Bearer session-token' }),
-    })))
+    await vi.waitFor(() => expect(rpcCall).toHaveBeenCalledWith('shopify-devtools:open-in-editor', { file: 'sections/hero.liquid', line: 1 }))
+  })
+
+  it('highlights the inspected component outside the dock and opens it directly', async () => {
+    const target = document.querySelector('#shopify-section-hero') as HTMLElement
+    target.getBoundingClientRect = () => ({ x: 10, y: 20, left: 10, top: 20, right: 210, bottom: 120, width: 200, height: 100, toJSON: () => ({}) })
+    const shadow = document.querySelector('shopify-liquid-devtools')?.shadowRoot
+    ;(shadow?.querySelector('#panel-inspect') as HTMLButtonElement).click()
+    target.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 30, clientY: 40 }))
+    expect(document.querySelector('[data-shopify-devtools-highlight]')).toBeTruthy()
+    const callsBefore = rpcCall.mock.calls.length
+    target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: 30, clientY: 40 }))
+    await vi.waitFor(() => expect(rpcCall).toHaveBeenCalledTimes(callsBefore + 1))
   })
 
   it('maps repeated snippet instances to their actual DOM roots', () => {
@@ -44,13 +92,13 @@ describe('browser panel', () => {
     expect(selected?.roots[0]?.id).toBe('second')
   })
 
-  it('shows a useful error when the editor endpoint returns an empty body', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 502 }))
+  it('shows a useful RPC error from the editor action', async () => {
+    rpcCall.mockRejectedValueOnce(new Error('Editor launcher failed'))
     document.body.innerHTML = `<!--shopify-devtools:start:${marker}--><section id="shopify-section-hero"></section><!--shopify-devtools:end:${marker}-->`
     document.dispatchEvent(new Event('shopify:section:load'))
     const shadow = document.querySelector('shopify-liquid-devtools')?.shadowRoot
     ;(shadow?.querySelector('#tree button') as HTMLButtonElement).click()
     ;(shadow?.querySelector('#details button') as HTMLButtonElement).click()
-    await vi.waitFor(() => expect(shadow?.querySelector('#toast')?.textContent).toContain('empty response'))
+    await vi.waitFor(() => expect(shadow?.querySelector('#toast')?.textContent).toContain('Editor launcher failed'))
   })
 })

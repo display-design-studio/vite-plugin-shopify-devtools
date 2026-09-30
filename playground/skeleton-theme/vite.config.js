@@ -2,7 +2,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath, URL } from 'node:url';
 import { defaultAllowedOrigins, defineConfig, loadEnv } from 'vite';
 import shopify from 'vite-plugin-shopify';
-import shopifyDevtools from 'vite-plugin-shopify-devtools';
+import shopifyDevtools, { shopifyDevtoolsBranding } from 'vite-plugin-shopify-devtools';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
@@ -19,6 +19,12 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
+    devtools: {
+      apply: 'serve',
+      embeddedVisibility: 'normal',
+      builtinDevTools: false,
+      branding: shopifyDevtoolsBranding,
+    },
     plugins: [
       shopify({ tunnel: isTunnelEnabled }),
       shopifyDevtools({

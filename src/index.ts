@@ -1,10 +1,36 @@
-import crypto from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { access, realpath } from 'node:fs/promises'
+import { spawn } from 'node:child_process'
 import path from 'node:path'
 import launchEditorProcess from 'launch-editor'
-import type { Plugin, ViteDevServer } from 'vite'
+import { defineRpcFunction } from '@vitejs/devtools-kit'
+import { defaultAllowedOrigins, type Plugin, type ViteDevServer } from 'vite'
 
 const CLIENT_ID = '\0virtual:shopify-devtools/client'
+const RENDERER_PUBLIC_ID = 'virtual:shopify-devtools/renderer'
+const RENDERER_ID = `\0${RENDERER_PUBLIC_ID}`
+const RENDERER_URL = `/@id/__x00__${RENDERER_PUBLIC_ID}`
+const ACTION_PUBLIC_ID = 'virtual:shopify-devtools/action'
+const ACTION_ID = `\0${ACTION_PUBLIC_ID}`
+const ACTION_URL = `/@id/__x00__${ACTION_PUBLIC_ID}`
+const svgDataUri = (name: string): string => {
+  const source = readFileSync(new URL(`../assets/shopify/${name}`, import.meta.url))
+  return `data:image/svg+xml;base64,${source.toString('base64')}`
+}
+
+const SHOPIFY_GLYPH = {
+  light: svgDataUri('shopify-glyph-black.svg'),
+  dark: svgDataUri('shopify-glyph-white.svg'),
+} as const
+
+export const shopifyDevtoolsBranding = {
+  productName: 'Shopify Liquid DevTools',
+  logo: SHOPIFY_GLYPH,
+  wordmark: SHOPIFY_GLYPH,
+  favicon: SHOPIFY_GLYPH.light,
+  primaryColor: '#5e8e3e',
+  windowTitle: 'Shopify Liquid DevTools',
+} as const
 
 export interface ShopifyDevtoolsOptions {
   entry?: string
@@ -33,20 +59,18 @@ export async function resolveThemeFile(root: string, file: string): Promise<stri
 
 export async function launchEditor(root: string, file: string, line: number, editor?: string): Promise<string> {
   const candidate = await resolveThemeFile(root, file)
-  const specifiedEditor = editor || process.env.SHOPIFY_DEVTOOLS_EDITOR || process.env.EDITOR
+  const configuredEditor = editor || process.env.SHOPIFY_DEVTOOLS_EDITOR || process.env.EDITOR
+  const specifiedEditor = configuredEditor || await findInstalledMacEditor()
   const target = `${candidate}:${line}:1`
-  try {
-    await launchOnce(target, specifiedEditor)
-  } catch (error) {
-    if (specifiedEditor) throw error
-    const installedEditor = await findInstalledMacEditor()
-    if (!installedEditor) throw error
-    await launchOnce(target, installedEditor)
-  }
+  await launchOnce(target, specifiedEditor)
   return candidate
 }
 
 async function launchOnce(target: string, editor?: string): Promise<void> {
+  if (editor?.endsWith('/Zed.app/Contents/MacOS/cli')) {
+    await launchZedCli(editor, target)
+    return
+  }
   await new Promise<void>((resolve, reject) => {
     let settled = false
     const finish = (error?: Error): void => {
@@ -62,10 +86,24 @@ async function launchOnce(target: string, editor?: string): Promise<void> {
   })
 }
 
+async function launchZedCli(editor: string, target: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(editor, [target], { stdio: 'ignore' })
+    child.once('error', reject)
+    child.once('exit', (code) => {
+      if (code === 0) resolve()
+      else reject(new Error(`Zed editor exited with code ${code ?? 'unknown'}`))
+    })
+  })
+}
+
 async function findInstalledMacEditor(): Promise<string | undefined> {
   if (process.platform !== 'darwin') return
   const candidates = [
-    '/Applications/Zed.app/Contents/MacOS/zed',
+    '/usr/local/bin/zed',
+    '/opt/homebrew/bin/zed',
+    '/opt/local/bin/zed',
+    '/Applications/Zed.app/Contents/MacOS/cli',
     '/Applications/Cursor.app/Contents/MacOS/Cursor',
     '/Applications/Visual Studio Code.app/Contents/MacOS/Electron',
   ]
@@ -76,43 +114,78 @@ async function findInstalledMacEditor(): Promise<string | undefined> {
 
 export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): Plugin {
   const entry = options.entry ?? 'frontend/entrypoints/ts/theme.ts'
-  const token = crypto.randomBytes(24).toString('base64url')
   let serve = false
   return {
     name: 'vite-plugin-shopify-devtools',
     enforce: 'pre',
     apply: 'serve',
+    config() {
+      if (!options.allowedOrigins?.length) return
+      return { server: { cors: { origin: [defaultAllowedOrigins, ...options.allowedOrigins] } } }
+    },
+    devtools: {
+      setup(context) {
+        // Vite's built-in group uses an absolute /__devtools-assets URL. In a
+        // Shopify-hosted document that URL targets Shopify instead of Vite.
+        context.docks.register({
+          id: 'viteplus',
+          type: 'group',
+          title: 'Vite+',
+          category: 'framework',
+          icon: 'ph:lightning-duotone',
+          visibility: 'false',
+        }, true)
+        context.docks.register({
+          id: 'shopify-liquid',
+          title: 'Shopify Liquid',
+          icon: SHOPIFY_GLYPH,
+          type: 'custom-render',
+          category: 'app',
+          renderer: {
+            importFrom: RENDERER_URL,
+            importName: 'default',
+          },
+        })
+        context.docks.register({
+          id: 'shopify-liquid:inspect',
+          title: 'Inspect Liquid component',
+          icon: 'ph:crosshair-duotone',
+          type: 'action',
+          category: 'app',
+          action: {
+            importFrom: ACTION_URL,
+            importName: 'default',
+          },
+        })
+        context.rpc.register(defineRpcFunction({
+          name: 'shopify-devtools:open-in-editor',
+          type: 'action',
+          setup: () => ({
+            handler: async (input: { file: string; line: number }) => {
+              if (!input || typeof input.file !== 'string' || !Number.isInteger(input.line) || input.line < 1) throw new Error('Invalid payload')
+              const file = await launchEditor(context.viteConfig.root, input.file, input.line, options.editor)
+              return { ok: true as const, file, line: input.line }
+            },
+          }),
+        }) as never)
+      },
+    },
     configResolved(config) { serve = config.command === 'serve' },
-    resolveId(id) { if (id === 'virtual:shopify-devtools/client') return CLIENT_ID },
+    resolveId(id) {
+      if (id === 'virtual:shopify-devtools/client') return CLIENT_ID
+      if (id === RENDERER_PUBLIC_ID || id === RENDERER_ID) return RENDERER_ID
+      if (id === ACTION_PUBLIC_ID || id === ACTION_ID) return ACTION_ID
+    },
     load(id) {
-      if (id !== CLIENT_ID) return
-      return `globalThis.__SHOPIFY_DEVTOOLS_CONFIG__={token:${JSON.stringify(token)},endpoint:new URL(import.meta.url).origin+'/__shopify-devtools/open'};await import(${JSON.stringify(new URL('./client.js', import.meta.url).href)});`
+      if (id === CLIENT_ID) return `const origin=new URL(import.meta.url).origin;const connectionUrl=origin+'/__devtools/__connection.json';const connectionResponse=await fetch(connectionUrl);if(!connectionResponse.ok)throw new Error('Unable to load Vite DevTools connection metadata ('+connectionResponse.status+')');const connectionMeta=await connectionResponse.json();globalThis.__DEVFRAME_CONNECTION__={connectionMeta,metaBaseUrl:connectionResponse.url||connectionUrl,authToken:connectionMeta.authToken};const devtoolsClient=origin+'/__devtools/embedded.js';await import(/* @vite-ignore */devtoolsClient);`
+      if (id === RENDERER_ID) return `export { default } from ${JSON.stringify(new URL('./client.js', import.meta.url).href)};`
+      if (id === ACTION_ID) return `export { default } from ${JSON.stringify(new URL('./action.js', import.meta.url).href)};`
     },
     transform(code, id) {
       if (!serve) return
       const clean = id.split('?')[0].split(path.sep).join('/')
       if (!clean.endsWith(entry.split(path.sep).join('/'))) return
       return { code: `import 'virtual:shopify-devtools/client';\n${code}`, map: null }
-    },
-    configureServer(server) {
-      server.middlewares.use('/__shopify-devtools/open', async (request, response) => {
-        response.setHeader('content-type', 'application/json')
-        if (request.method !== 'POST') { response.statusCode = 405; response.end('{"error":"Method not allowed"}'); return }
-        if (!isAllowedOrigin(request.headers.origin, server, options.allowedOrigins ?? [])) { response.statusCode = 403; response.end('{"error":"Origin not allowed"}'); return }
-        if (request.headers.authorization !== `Bearer ${token}`) { response.statusCode = 401; response.end('{"error":"Invalid token"}'); return }
-        let body = ''
-        request.on('data', (chunk) => { if (body.length < 16_384) body += chunk })
-        request.on('end', async () => {
-          try {
-            const payload = JSON.parse(body) as { file?: unknown; line?: unknown }
-            if (typeof payload.file !== 'string' || !Number.isInteger(payload.line) || Number(payload.line) < 1) throw new Error('Invalid payload')
-            const openedFile = await launchEditor(server.config.root, payload.file, Number(payload.line), options.editor)
-            response.end(JSON.stringify({ ok: true, file: openedFile, line: Number(payload.line) }))
-          } catch (error) {
-            response.statusCode = 400; response.end(JSON.stringify({ error: error instanceof Error ? error.message : 'Bad request' }))
-          }
-        })
-      })
     },
   }
 }

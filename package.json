@@ -11,21 +11,31 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./devtools-client": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.js"
+    },
+    "./devtools-action": {
+      "types": "./dist/action.d.ts",
+      "import": "./dist/action.js"
     }
   },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": ["dist", "assets", "README.md", "LICENSE"],
   "scripts": {
-    "build": "tsup src/index.ts src/cli.ts src/client.ts --format esm --dts --clean",
+    "build": "tsup src/index.ts src/cli.ts src/client.ts src/action.ts --format esm --dts --clean",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src test vite.config.ts",
     "test": "vitest run",
     "test:browser": "vitest run test/client.test.ts"
   },
   "peerDependencies": {
-    "vite": "^8.0.0"
+    "vite": "^8.3.0"
   },
   "dependencies": {
     "@shopify/liquid-html-parser": "^2.9.0",
+    "@vitejs/devtools": "^0.7.6",
+    "@vitejs/devtools-kit": "^0.7.6",
     "chokidar": "^5.0.0",
     "launch-editor": "^2.14.1"
   },
@@ -37,7 +47,7 @@
     "tsup": "^8.5.0",
     "typescript": "^6.0.0",
     "typescript-eslint": "^8.0.0",
-    "vite": "^8.0.0",
+    "vite": "^8.3.1",
     "vitest": "^4.0.0"
   },
   "engines": {
