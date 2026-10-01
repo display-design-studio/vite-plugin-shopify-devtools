@@ -1,53 +1,40 @@
 <!doctype html>
 <html lang="{{ request.locale.iso_code }}">
-    <head>
-        {% # Social, title, etc. %}
-        {% render 'meta-tags' %}
+  <head>
+    {% # Inlined CSS Variables %}
+    {% render 'css-variables' %}
 
-        {%- liquid
-            render 'vite-tag' with 'css/main.css'
-            render 'vite-tag' with 'ts/theme.ts'
+    {% comment %}
+      Font preloading:
+      1. Preconnect to font CDN for faster connection
+      2. Preload only the critical font variant (base weight)
+      3. Additional variants load on-demand via @font-face
+    {% endcomment %}
+    {% unless settings.type_primary_font.system? %}
+      <link rel="preconnect" href="https://fonts.shopifycdn.com" crossorigin>
 
-            case request.page_type
-                when 'index'
-                    render 'vite-tag' with 'ts/index.ts'
-                when 'product'
-                    render 'vite-tag' with 'ts/product.ts'
-                when 'collection'
-                    render 'vite-tag' with 'ts/collection.ts'
-                when 'list-collections'
-                    render 'vite-tag' with 'ts/list-collections.ts'
-                when 'cart'
-                    render 'vite-tag' with 'ts/cart.ts'
-                when 'search'
-                    render 'vite-tag' with 'ts/search.ts'
-                when 'blog'
-                    render 'vite-tag' with 'ts/blog.ts'
-                when 'article'
-                    render 'vite-tag' with 'ts/article.ts'
-                when 'page'
-                    render 'vite-tag' with 'ts/page.ts'
-                when '404'
-                    render 'vite-tag' with 'ts/404.ts'
-            endcase
-        -%}
-        {{ content_for_header }}
-    </head>
+      {% comment %} Preload the base font variant for initial page render {% endcomment %}
+      {{ settings.type_primary_font | font_url | preload_tag: as: 'font', crossorigin: 'anonymous' }}
+    {% endunless %}
 
-    <body>
-        <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:bg-white focus:px-4 focus:py-2">
-            {{ 'general.skip_to_content' | t }}
-        </a>
+    {% # Load and preload the critical CSS %}
+    {{ 'critical.css' | asset_url | stylesheet_tag: preload: true }}
 
-        {% sections 'header-group' %}
+    {% # Vite entrypoints %}
+    {% render 'vite-tag' with 'css/main.css' %}
+    {% render 'vite-tag' with 'ts/theme.ts' %}
 
-        <main id="main-content">
-            {{ content_for_layout }}
-        </main>
+    {% # Social, title, etc. %}
+    {% render 'meta-tags' %}
 
-        {% section 'cart-drawer' %}
-        {% section 'search-drawer' %}
+    {{ content_for_header }}
+  </head>
 
-        {% sections 'footer-group' %}
-    </body>
+  <body>
+    {% sections 'header-group' %}
+
+    {{ content_for_layout }}
+
+    {% sections 'footer-group' %}
+  </body>
 </html>

@@ -49,39 +49,6 @@ This MVP intentionally excludes Theme Editor iframe integration, Liquid profilin
 
 The dock button, logo, and favicon use the full-color Shopify bag (`assets/shopify/shopify-glyph.svg`) on both themes. The black and white glyph variants stay in `assets/shopify/` for monochrome treatments.
 
-## Roadmap / TODO
-
-### A. Less user configuration
-
-Target config:
-
-```ts
-export default defineConfig({
-  devtools: shopifyDevtoolsConfig,
-  plugins: [shopify(), shopifyDevtools()],
-})
-```
-
-- [x] **A1. Optional `entry`**: auto-detect entrypoints from the `build.rollupOptions.input` resolved by `vite-plugin-shopify` (barrel/shopify-vite) and inject the client into all of them. `entry` stays as an override.
-- [x] **A2. Optional `allowedOrigins`**: always allow `127.0.0.1:9292` / `localhost:9292`, `*.myshopify.com`, and the store from `SHOPIFY_STORE_DOMAIN` or `shopify.theme.toml`. Verify the merge with a user-defined `server.cors`.
-- [~] **A3. (preset + warning done, zero-config spike pending) `devtools` block**: Vite rejects plugins changing `devtools` from `config()`, so export a `shopifyDevtoolsConfig` preset and warn in `configResolved` when `devtools` is missing or misconfigured. Spike: return the `DevTools()` plugins from `shopifyDevtools()` for zero config.
-- [x] **A4. Cleanup**: read `themeRoot` from the resolved Vite config in `src/cli.ts` and `src/mirror.ts`; simplify the playground config; update this README.
-
-### B. Shopify branding in Vite DevTools style
-
-- [x] **B1. Branding**: tune `primaryColor` (Shopify green), add `tagline` and a square-boxed glyph (a dedicated wordmark is still to do).
-- [x] **B2. Dock icons**: normalize to a square 24 viewBox displayed at 20px like Vite; consider `mask:` icons so they follow `currentColor`/`text-primary`.
-- [x] **B3. Panel and toolbar**: replace the purple accents with tokens derived from the Shopify green; match Vite borders, blur, radius, and 18–20px icons; match Vite animations (`.3s cubic-bezier(.4,0,.2,1)` hover `scale(1.1)` / selected `scale(1.2)`, `.15s` buttons, `.5s cubic-bezier(.16,1,.3,1)` panel) and honor `prefers-reduced-motion`.
-- [x] **B4. Inspector**: change the Nuxt green (`#00dc82`) to Shopify green.
-
-### C. Polaris look
-
-The panel follows the Shopify admin (Polaris) visual language, using the token values from `@shopify/polaris-tokens`, as plain CSS with no web components or CDN. The admin UI is neutral (near-black primary actions, `#303030` text, Inter 13px, 8px radii) and the brand green `#95bf47` is not one of its UI colors, so green is limited to the logo, dock, selected and active states, and the inspector highlight.
-
-- [x] **C1. Tokens**: Polaris light and dark surfaces, text, borders, focus ring, shadows, and type scale, following the Vite DevTools theme.
-- [x] **C2. Components**: secondary and primary buttons, tone badges (success, info, caution) for Section, Block, and Snippet, a card for the details, a banner-style toast, and an empty state.
-- [x] **C3. Inspector**: Polaris-style label on the green highlight.
-
 ## Playground
 
-`playground/skeleton-theme` is a sanitized snapshot of Shopify's public Skeleton theme at commit `c72ec9209e3912f18387906f58dfd1f44b61c4ad`. It excludes `.git`, `.env`, `.shopify`, local `shopify.theme.toml`, and `node_modules`. See its `SNAPSHOT.md` for provenance and local setup.
+`playground/skeleton-theme` is a snapshot of Shopify's official [Skeleton theme](https://github.com/Shopify/skeleton-theme) (`main`, commit `a4f32d393b9eadf6c4403318ca39116832e5d1df`) with Vite set up like the Display starter (one CSS and one TS entrypoint) and wired to this plugin. It excludes `.git`, `.env`, `.shopify`, local `shopify.theme.toml`, and `node_modules`. See its `SNAPSHOT.md` for provenance and local setup.

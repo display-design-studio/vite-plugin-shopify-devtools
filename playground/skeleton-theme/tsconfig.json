@@ -15,7 +15,7 @@
     "resolveJsonModule": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
-    "types": ["vite/client"],
+    "types": ["vite/client"]
   },
-  "include": ["frontend/**/*.ts", "vite.config.js"],
+  "include": ["frontend/**/*.ts", "vite.config.js"]
 }
