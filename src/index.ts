@@ -29,7 +29,8 @@ export const shopifyDevtoolsBranding = {
   logo: SHOPIFY_GLYPH,
   wordmark: SHOPIFY_GLYPH,
   favicon: SHOPIFY_GLYPH.light,
-  primaryColor: '#5e8e3e',
+  primaryColor: '#95bf47',
+  tagline: 'DevTools for Shopify Liquid themes',
   windowTitle: 'Shopify Liquid DevTools',
 } as const
 
