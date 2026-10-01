@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { spawn, type ChildProcess } from 'node:child_process'
 import process from 'node:process'
+import { resolveConfig } from 'vite'
+import { resolveThemeRoot } from './index.js'
 import { createThemeMirror } from './mirror.js'
 
 function run(command: string, args: string[], cwd: string): ChildProcess {
@@ -14,7 +16,8 @@ async function main(): Promise<void> {
     process.exitCode = 1
     return
   }
-  const themeRoot = process.cwd()
+  let themeRoot = process.cwd()
+  try { themeRoot = resolveThemeRoot(await resolveConfig({}, 'serve')) } catch { /* Fall back to the working directory. */ }
   const mirror = await createThemeMirror(themeRoot)
   const vite = run(process.platform === 'win32' ? 'vite.cmd' : 'vite', [], themeRoot)
   const shopify = run(process.platform === 'win32' ? 'shopify.cmd' : 'shopify', ['theme', 'dev', '--path', mirror.root, ...flags], themeRoot)

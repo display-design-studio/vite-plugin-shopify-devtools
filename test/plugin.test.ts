@@ -1,6 +1,6 @@
 import { realpath } from 'node:fs/promises'
 import { describe, expect, it, vi } from 'vitest'
-import shopifyDevtools, { devtoolsConfigWarning, resolveEntrypoints, shopifyDevtoolsBranding, shopifyDevtoolsConfig } from '../src/index.js'
+import shopifyDevtools, { devtoolsConfigWarning, resolveEntrypoints, resolveThemeRoot, shopifyDevtoolsBranding, shopifyDevtoolsConfig } from '../src/index.js'
 import { INSPECT_ICON } from '../src/inspect-icon.js'
 
 describe('Vite plugin', () => {
@@ -42,6 +42,12 @@ describe('Vite plugin', () => {
     expect(devtoolsConfigWarning(false)).toContain('shopifyDevtoolsConfig')
     expect(devtoolsConfigWarning({ builtinDevTools: true, branding: shopifyDevtoolsBranding })).toContain('builtinDevTools: false')
     expect(devtoolsConfigWarning({ ...shopifyDevtoolsConfig })).toBeUndefined()
+  })
+
+  it('derives the theme root from the vite-plugin-shopify outDir', () => {
+    expect(resolveThemeRoot({ root: '/project', build: { outDir: '/project/theme/assets' } })).toBe('/project/theme')
+    expect(resolveThemeRoot({ root: '/project', build: { outDir: 'assets' } })).toBe('/project')
+    expect(resolveThemeRoot({ root: '/project', build: { outDir: 'dist' } })).toBe('/project')
   })
 
   it('adds configured Shopify origins to Vite CORS for the embedded bootstrap', () => {

@@ -146,6 +146,12 @@ async function findInstalledMacEditor(): Promise<string | undefined> {
   }
 }
 
+/** vite-plugin-shopify builds into `<themeRoot>/assets`, so the theme root is the parent of that outDir. */
+export function resolveThemeRoot(config: { root: string, build?: { outDir?: string } }): string {
+  const outDir = config.build?.outDir && path.resolve(config.root, config.build.outDir)
+  return outDir && path.basename(outDir) === 'assets' ? path.dirname(outDir) : config.root
+}
+
 const SCRIPT_ENTRY = /\.[cm]?[jt]sx?$/
 
 const toPosix = (value: string): string => value.split(path.sep).join('/')
@@ -215,7 +221,7 @@ export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): P
           setup: () => ({
             handler: async (input: { file: string; line: number }) => {
               if (!input || typeof input.file !== 'string' || !Number.isInteger(input.line) || input.line < 1) throw new Error('Invalid payload')
-              const file = await launchEditor(context.viteConfig.root, input.file, input.line, options.editor)
+              const file = await launchEditor(resolveThemeRoot(context.viteConfig), input.file, input.line, options.editor)
               return { ok: true as const, file, line: input.line }
             },
           }),
