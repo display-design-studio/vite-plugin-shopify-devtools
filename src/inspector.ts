@@ -192,7 +192,7 @@ export class InspectorController {
       const badge = document.createElement('div')
       badge.dataset.shopifyDevtoolsSource = ''
       badge.textContent = `<${root.localName}> ${node.file}:${node.line}`
-      Object.assign(badge.style, { position: 'fixed', boxSizing: 'border-box', pointerEvents: 'none', zIndex: '1', maxWidth: 'calc(100vw - 8px)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '3px 6px', borderRadius: '3px', background: '#5e8e3e', color: '#fff', font: '11px/1.4 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace', left: `${Math.max(4, rect.left)}px`, top: `${rect.bottom}px` })
+      Object.assign(badge.style, { position: 'fixed', boxSizing: 'border-box', pointerEvents: 'none', zIndex: '1', maxWidth: 'calc(100vw - 8px)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '2px 6px', borderRadius: '4px', background: '#303030', color: '#fff', font: '550 11px/16px Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif', left: `${Math.max(4, rect.left)}px`, top: `${rect.bottom}px` })
       this.#overlay.append(box, badge)
       const badgeWidth = badge.getBoundingClientRect().width || badge.offsetWidth
       const badgeHeight = badge.getBoundingClientRect().height || badge.offsetHeight || 22

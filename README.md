@@ -74,6 +74,14 @@ export default defineConfig({
 - [x] **B3. Panel and toolbar**: replace the purple accents with tokens derived from the Shopify green; match Vite borders, blur, radius, and 18–20px icons; match Vite animations (`.3s cubic-bezier(.4,0,.2,1)` hover `scale(1.1)` / selected `scale(1.2)`, `.15s` buttons, `.5s cubic-bezier(.16,1,.3,1)` panel) and honor `prefers-reduced-motion`.
 - [x] **B4. Inspector**: change the Nuxt green (`#00dc82`) to Shopify green.
 
+### C. Polaris look
+
+The panel follows the Shopify admin (Polaris) visual language, using the token values from `@shopify/polaris-tokens`, as plain CSS with no web components or CDN. The admin UI is neutral (near-black primary actions, `#303030` text, Inter 13px, 8px radii) and the brand green `#95bf47` is not one of its UI colors, so green is limited to the logo, dock, selected and active states, and the inspector highlight.
+
+- [x] **C1. Tokens**: Polaris light and dark surfaces, text, borders, focus ring, shadows, and type scale, following the Vite DevTools theme.
+- [x] **C2. Components**: secondary and primary buttons, tone badges (success, info, caution) for Section, Block, and Snippet, a card for the details, a banner-style toast, and an empty state.
+- [x] **C3. Inspector**: Polaris-style label on the green highlight.
+
 ## Playground
 
 `playground/skeleton-theme` is a sanitized snapshot of Shopify's public Skeleton theme at commit `c72ec9209e3912f18387906f58dfd1f44b61c4ad`. It excludes `.git`, `.env`, `.shopify`, local `shopify.theme.toml`, and `node_modules`. See its `SNAPSHOT.md` for provenance and local setup.
