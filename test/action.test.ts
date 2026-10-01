@@ -27,7 +27,7 @@ describe('inspector dock action', () => {
     target.getBoundingClientRect = () => ({ x: 1, y: 2, left: 1, top: 2, right: 101, bottom: 52, width: 100, height: 50, toJSON: () => ({}) })
     target.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 5, clientY: 5 }))
     const highlight = document.querySelector<HTMLElement>('[data-shopify-devtools-highlight]')
-    expect(highlight?.style.borderColor).toBe('rgb(0, 220, 130)')
+    expect(highlight?.style.borderColor).toBe('rgb(149, 191, 71)')
     expect(document.querySelector('[data-shopify-devtools-source]')?.textContent).toBe('<section> sections/hero.liquid:4')
 
     target.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }))

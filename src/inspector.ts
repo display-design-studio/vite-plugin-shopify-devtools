@@ -188,11 +188,11 @@ export class InspectorController {
       if ((!rect.width && !rect.height) || rect.bottom <= 0 || rect.right <= 0 || rect.top >= innerHeight || rect.left >= innerWidth) continue
       const box = document.createElement('div')
       box.dataset.shopifyDevtoolsHighlight = ''
-      Object.assign(box.style, { position: 'fixed', boxSizing: 'border-box', pointerEvents: 'none', border: '2px solid #00dc82', background: 'rgba(0,220,130,.16)', left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px` })
+      Object.assign(box.style, { position: 'fixed', boxSizing: 'border-box', pointerEvents: 'none', border: '2px solid #95bf47', background: 'rgba(149,191,71,.16)', left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px` })
       const badge = document.createElement('div')
       badge.dataset.shopifyDevtoolsSource = ''
       badge.textContent = `<${root.localName}> ${node.file}:${node.line}`
-      Object.assign(badge.style, { position: 'fixed', boxSizing: 'border-box', pointerEvents: 'none', zIndex: '1', maxWidth: 'calc(100vw - 8px)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '3px 6px', borderRadius: '3px', background: '#00dc82', color: '#fff', font: '11px/1.4 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace', left: `${Math.max(4, rect.left)}px`, top: `${rect.bottom}px` })
+      Object.assign(badge.style, { position: 'fixed', boxSizing: 'border-box', pointerEvents: 'none', zIndex: '1', maxWidth: 'calc(100vw - 8px)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '3px 6px', borderRadius: '3px', background: '#5e8e3e', color: '#fff', font: '11px/1.4 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace', left: `${Math.max(4, rect.left)}px`, top: `${rect.bottom}px` })
       this.#overlay.append(box, badge)
       const badgeWidth = badge.getBoundingClientRect().width || badge.offsetWidth
       const badgeHeight = badge.getBoundingClientRect().height || badge.offsetHeight || 22

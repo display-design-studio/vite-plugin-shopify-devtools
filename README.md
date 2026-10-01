@@ -71,8 +71,8 @@ export default defineConfig({
 
 - [x] **B1. Branding**: tune `primaryColor` (Shopify green), add `tagline` and a square-boxed glyph (a dedicated wordmark is still to do).
 - [x] **B2. Dock icons**: normalize to a square 24 viewBox displayed at 20px like Vite; consider `mask:` icons so they follow `currentColor`/`text-primary`.
-- [ ] **B3. Panel and toolbar**: replace the purple accents with tokens derived from the Shopify green; match Vite borders, blur, radius, and 18–20px icons; match Vite animations (`.3s cubic-bezier(.4,0,.2,1)` hover `scale(1.1)` / selected `scale(1.2)`, `.15s` buttons, `.5s cubic-bezier(.16,1,.3,1)` panel) and honor `prefers-reduced-motion`.
-- [ ] **B4. Inspector**: change the Nuxt green (`#00dc82`) to Shopify green and add a short highlight transition.
+- [x] **B3. Panel and toolbar**: replace the purple accents with tokens derived from the Shopify green; match Vite borders, blur, radius, and 18–20px icons; match Vite animations (`.3s cubic-bezier(.4,0,.2,1)` hover `scale(1.1)` / selected `scale(1.2)`, `.15s` buttons, `.5s cubic-bezier(.16,1,.3,1)` panel) and honor `prefers-reduced-motion`.
+- [x] **B4. Inspector**: change the Nuxt green (`#00dc82`) to Shopify green.
 
 ## Playground
 
