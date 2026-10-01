@@ -1,6 +1,6 @@
 import { realpath } from 'node:fs/promises'
 import { describe, expect, it, vi } from 'vitest'
-import shopifyDevtools, { shopifyDevtoolsBranding } from '../src/index.js'
+import shopifyDevtools, { resolveEntrypoints, shopifyDevtoolsBranding } from '../src/index.js'
 import { INSPECT_ICON } from '../src/inspect-icon.js'
 
 describe('Vite plugin', () => {
@@ -19,6 +19,23 @@ describe('Vite plugin', () => {
     expect(virtualModule).toContain('__DEVFRAME_CONNECTION__')
     expect(virtualModule).toContain("/__devtools/embedded.js")
     expect(plugin.devtools).toBeTruthy()
+  })
+
+  it('auto-detects script entrypoints from the resolved build input', () => {
+    expect(resolveEntrypoints('/theme', { rollupOptions: { input: ['/theme/frontend/entrypoints/ts/theme.ts', '/theme/frontend/entrypoints/css/app.css'] } }))
+      .toEqual(['/theme/frontend/entrypoints/ts/theme.ts'])
+    expect(resolveEntrypoints('/theme', { rollupOptions: { input: { a: 'frontend/a.js' } } })).toEqual(['/theme/frontend/a.js'])
+    expect(resolveEntrypoints('/theme', undefined)).toEqual([])
+
+    const plugin = shopifyDevtools()
+    ;(plugin.configResolved as (config: unknown) => void)({
+      command: 'serve',
+      root: '/theme',
+      build: { rollupOptions: { input: ['/theme/frontend/entrypoints/ts/theme.ts', '/theme/frontend/entrypoints/ts/product.ts'] } },
+    })
+    const transform = plugin.transform as (code: string, id: string) => { code: string } | undefined
+    expect(transform('x', '/theme/frontend/entrypoints/ts/product.ts?t=1')?.code).toContain("import 'virtual:shopify-devtools/client'")
+    expect(transform('x', '/theme/frontend/other.ts')).toBeUndefined()
   })
 
   it('adds configured Shopify origins to Vite CORS for the embedded bootstrap', () => {

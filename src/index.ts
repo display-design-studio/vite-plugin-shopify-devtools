@@ -113,8 +113,25 @@ async function findInstalledMacEditor(): Promise<string | undefined> {
   }
 }
 
+const SCRIPT_ENTRY = /\.[cm]?[jt]sx?$/
+
+const toPosix = (value: string): string => value.split(path.sep).join('/')
+
+/** Collects the script entrypoints from Vite's resolved build input (as set by vite-plugin-shopify). */
+export function resolveEntrypoints(root: string, build: { rollupOptions?: { input?: unknown }, rolldownOptions?: { input?: unknown } } | undefined): string[] {
+  const input = build?.rolldownOptions?.input ?? build?.rollupOptions?.input
+  const values = typeof input === 'string' ? [input]
+    : Array.isArray(input) ? input
+    : input && typeof input === 'object' ? Object.values(input)
+    : []
+  return values
+    .filter((value): value is string => typeof value === 'string' && SCRIPT_ENTRY.test(value))
+    .map((value) => toPosix(path.resolve(root, value)))
+}
+
 export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): Plugin {
-  const entry = options.entry ?? 'frontend/entrypoints/ts/theme.ts'
+  const explicitEntry = options.entry ? toPosix(options.entry) : undefined
+  let entrypoints = new Set<string>()
   let serve = false
   return {
     name: 'vite-plugin-shopify-devtools',
@@ -171,7 +188,10 @@ export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): P
         }) as never)
       },
     },
-    configResolved(config) { serve = config.command === 'serve' },
+    configResolved(config) {
+      serve = config.command === 'serve'
+      entrypoints = new Set(resolveEntrypoints(config.root, config.build as never))
+    },
     resolveId(id) {
       if (id === 'virtual:shopify-devtools/client') return CLIENT_ID
       if (id === RENDERER_PUBLIC_ID || id === RENDERER_ID) return RENDERER_ID
@@ -184,8 +204,9 @@ export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): P
     },
     transform(code, id) {
       if (!serve) return
-      const clean = id.split('?')[0].split(path.sep).join('/')
-      if (!clean.endsWith(entry.split(path.sep).join('/'))) return
+      const clean = toPosix(id.split('?')[0])
+      const matches = explicitEntry ? clean.endsWith(explicitEntry) : entrypoints.has(clean)
+      if (!matches) return
       return { code: `import 'virtual:shopify-devtools/client';\n${code}`, map: null }
     },
   }

@@ -28,7 +28,6 @@ export default defineConfig(({ mode }) => {
     plugins: [
       shopify({ tunnel: isTunnelEnabled }),
       shopifyDevtools({
-        entry: 'frontend/entrypoints/ts/theme.ts',
         allowedOrigins: storeDomain ? [`https://${storeDomain}`] : [],
       }),
       tailwindcss(),
