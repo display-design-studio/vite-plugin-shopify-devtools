@@ -19,7 +19,10 @@ describe('Vite plugin', () => {
     expect(virtualModule).toContain('__DEVFRAME_CONNECTION__')
     expect(virtualModule).toContain("/__devtools/embedded.js")
     expect(virtualModule).toContain('devframes-dock-embedded')
-    expect(virtualModule).toContain('--devframes-dock-minimized-size:24px')
+    expect(virtualModule).toContain('--devframes-dock-minimized-size:var(--devframes-dock-height,34px);border-radius:.5rem}')
+    expect(virtualModule).toContain('#devframes-dock>div:first-child{width:20px;height:20px}')
+    expect(virtualModule).toContain('.bg-dock-glass,#devframes-anchor #devframes-dock{background-color:#fff;backdrop-filter:none}')
+    expect(virtualModule).toContain('.dark .bg-dock-glass,.dark #devframes-anchor #devframes-dock{background-color:#111}')
     expect(plugin.devtools).toBeTruthy()
   })
 
@@ -86,9 +89,9 @@ describe('Vite plugin', () => {
     expect(rpcRegister).toHaveBeenCalledWith(expect.objectContaining({ name: 'shopify-devtools:open-in-editor', type: 'action' }))
     expect(shopifyDevtoolsBranding.logo.light).toMatch(/^data:image\/svg\+xml;base64,/)
     expect(shopifyDevtoolsBranding.logo.dark).toMatch(/^data:image\/svg\+xml;base64,/)
-    expect(decodeURIComponent(atob(shopifyDevtoolsBranding.logo.light.split(',')[1]))).toContain('#95BF47')
-    expect(decodeURIComponent(INSPECT_ICON.light)).toContain('stroke="black"')
-    expect(decodeURIComponent(INSPECT_ICON.dark)).toContain('stroke="white"')
+    expect(decodeURIComponent(atob(shopifyDevtoolsBranding.logo.light.split(',')[1]))).toContain('#4AC93E')
+    expect(decodeURIComponent(INSPECT_ICON.light)).toContain('fill="black"')
+    expect(decodeURIComponent(INSPECT_ICON.dark)).toContain('fill="white"')
   })
 
   it('rejects an invalid editor RPC payload before launching an editor', async () => {

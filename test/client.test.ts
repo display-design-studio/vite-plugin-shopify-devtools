@@ -37,10 +37,10 @@ describe('browser panel', () => {
     expect(host?.shadowRoot?.querySelector('#vite-devtools-native-layout')?.textContent).toContain('#toolbar{display:none')
     const inspector = host?.shadowRoot?.querySelector('#panel-inspect') as HTMLButtonElement
     expect(inspector).toBeTruthy()
-    expect(inspector.querySelector('svg')?.getAttribute('viewBox')).toBe('0 0 24 24')
+    expect(inspector.querySelector('svg')?.getAttribute('viewBox')).toBe('0 0 256 256')
     expect(inspector.querySelector('svg')?.classList.contains('inspect-icon')).toBe(true)
-    expect(inspector.querySelector('circle')?.getAttribute('r')).toBe('.5')
-    expect(inspector.querySelector('path')?.getAttribute('d')).toBe('M5 12a7 7 0 1 0 14 0a7 7 0 1 0-14 0m7-9v2m-9 7h2m7 7v2m7-9h2')
+    expect(inspector.querySelector('path')?.getAttribute('opacity')).toBe('.2')
+    expect(inspector.querySelectorAll('path')).toHaveLength(2)
     inspector.click()
     expect(inspector.getAttribute('aria-pressed')).toBe('true')
     inspector.click()

@@ -24,6 +24,8 @@
   "files": ["dist", "assets", "README.md", "LICENSE"],
   "scripts": {
     "build": "tsup src/index.ts src/cli.ts src/client.ts src/action.ts --format esm --dts --clean",
+    "playground:sync": "rsync -a --delete dist assets playground/skeleton-theme/node_modules/vite-plugin-shopify-devtools/",
+    "playground": "bun run build && bun run playground:sync && bun run --cwd playground/skeleton-theme dev",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src test vite.config.ts",
     "test": "vitest run",

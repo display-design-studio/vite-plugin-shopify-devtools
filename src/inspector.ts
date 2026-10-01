@@ -188,7 +188,7 @@ export class InspectorController {
       if ((!rect.width && !rect.height) || rect.bottom <= 0 || rect.right <= 0 || rect.top >= innerHeight || rect.left >= innerWidth) continue
       const box = document.createElement('div')
       box.dataset.shopifyDevtoolsHighlight = ''
-      Object.assign(box.style, { position: 'fixed', boxSizing: 'border-box', pointerEvents: 'none', border: '2px solid #95bf47', background: 'rgba(149,191,71,.16)', left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px` })
+      Object.assign(box.style, { position: 'fixed', boxSizing: 'border-box', pointerEvents: 'none', border: '2px solid #4ac93e', background: 'rgba(74,201,62,.16)', left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px` })
       const badge = document.createElement('div')
       badge.dataset.shopifyDevtoolsSource = ''
       badge.textContent = `<${root.localName}> ${node.file}:${node.line}`

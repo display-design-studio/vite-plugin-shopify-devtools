@@ -1,9 +1,9 @@
+import { defineRpcFunction } from '@vitejs/devtools-kit'
+import launchEditorProcess from 'launch-editor'
+import { spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { access, realpath } from 'node:fs/promises'
-import { spawn } from 'node:child_process'
 import path from 'node:path'
-import launchEditorProcess from 'launch-editor'
-import { defineRpcFunction } from '@vitejs/devtools-kit'
 import { defaultAllowedOrigins, loadEnv, type Plugin } from 'vite'
 import { INSPECT_ICON } from './inspect-icon.js'
 
@@ -14,10 +14,11 @@ const RENDERER_URL = `/@id/__x00__${RENDERER_PUBLIC_ID}`
 const ACTION_PUBLIC_ID = 'virtual:shopify-devtools/action'
 const ACTION_ID = `\0${ACTION_PUBLIC_ID}`
 const ACTION_URL = `/@id/__x00__${ACTION_PUBLIC_ID}`
-// Collapsed, Vite DevTools shows its logo in a 22px circle with 2px vertical padding, so the logo
-// renders at 18px. A 24px circle shows it at 20px, the size of the icons in the open dock.
-const MINIMIZED_SIZE_CSS = '#devframes-anchor.devframes-minimized #devframes-dock{--devframes-dock-minimized-size:24px}'
-const MINIMIZED_SIZE_SCRIPT = `const applyMinimizedSize=()=>{const host=document.querySelector('devframes-dock-embedded');if(!host?.shadowRoot)return false;if(!host.shadowRoot.querySelector('style[data-shopify-devtools]')){const style=document.createElement('style');style.dataset.shopifyDevtools='';style.textContent=${JSON.stringify(MINIMIZED_SIZE_CSS)};host.shadowRoot.append(style)}return true};if(!applyMinimizedSize()){const observer=new MutationObserver(()=>{if(applyMinimizedSize())observer.disconnect()});observer.observe(document.documentElement,{childList:true,subtree:true});setTimeout(()=>observer.disconnect(),10000)}`
+// Collapsed, Vite DevTools shows its logo at 12px (`w-3 h-3`) in a 22px pill. The open dock is
+// `barHeight` tall (34px) with 20px icons (`w-5 h-5`) and a .5rem radius; a square of that height
+// with a 20px centered logo keeps the same size and padding.
+const DOCK_CSS = '.bg-dock-glass,#devframes-anchor #devframes-dock{background-color:#fff;backdrop-filter:none}.dark .bg-dock-glass,.dark #devframes-anchor #devframes-dock{background-color:#111}#devframes-anchor.devframes-minimized #devframes-dock{--devframes-dock-minimized-size:var(--devframes-dock-height,34px);border-radius:.5rem}#devframes-anchor.devframes-minimized #devframes-dock>div:first-child{width:20px;height:20px}'
+const MINIMIZED_SIZE_SCRIPT = `const applyMinimizedSize=()=>{const host=document.querySelector('devframes-dock-embedded');if(!host?.shadowRoot)return false;if(!host.shadowRoot.querySelector('style[data-shopify-devtools]')){const style=document.createElement('style');style.dataset.shopifyDevtools='';style.textContent=${JSON.stringify(DOCK_CSS)};host.shadowRoot.append(style)}return true};if(!applyMinimizedSize()){const observer=new MutationObserver(()=>{if(applyMinimizedSize())observer.disconnect()});observer.observe(document.documentElement,{childList:true,subtree:true});setTimeout(()=>observer.disconnect(),10000)}`
 const svgDataUri = (name: string): string => {
   const source = readFileSync(new URL(`../assets/shopify/${name}`, import.meta.url))
   return `data:image/svg+xml;base64,${source.toString('base64')}`
@@ -34,7 +35,7 @@ export const shopifyDevtoolsBranding = {
   logo: SHOPIFY_GLYPH,
   wordmark: SHOPIFY_GLYPH,
   favicon: SHOPIFY_GLYPH.light,
-  primaryColor: '#95bf47',
+  primaryColor: '#4ac93e',
   tagline: 'DevTools for Shopify Liquid themes',
   windowTitle: 'Shopify Liquid DevTools',
 } as const
@@ -262,5 +263,6 @@ export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): P
   }
 }
 
-export { createThemeMirror } from './mirror.js'
 export { instrumentLiquid } from './instrument.js'
+export { createThemeMirror } from './mirror.js'
+
