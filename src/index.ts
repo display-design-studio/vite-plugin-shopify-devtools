@@ -5,6 +5,7 @@ import path from 'node:path'
 import launchEditorProcess from 'launch-editor'
 import { defineRpcFunction } from '@vitejs/devtools-kit'
 import { defaultAllowedOrigins, type Plugin, type ViteDevServer } from 'vite'
+import { INSPECT_ICON } from './inspect-icon.js'
 
 const CLIENT_ID = '\0virtual:shopify-devtools/client'
 const RENDERER_PUBLIC_ID = 'virtual:shopify-devtools/renderer'
@@ -149,7 +150,7 @@ export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): P
         context.docks.register({
           id: 'shopify-liquid:inspect',
           title: 'Inspect Liquid component',
-          icon: 'ph:crosshair-duotone',
+          icon: INSPECT_ICON,
           type: 'action',
           category: 'app',
           action: {

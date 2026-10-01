@@ -1,9 +1,10 @@
 import type { DockClientScriptContext } from '@vitejs/devtools-kit/client'
-import { componentTree, deepestAtPoint, deepestForTarget, getInspectorController, type ComponentNode } from './inspector.js'
+import { INSPECT_ENTRY_ID, componentTree, deactivateInspectorOnDevtoolsNavigation, deepestAtPoint, deepestForTarget, getInspectorController, type ComponentNode } from './inspector.js'
+import { INSPECT_ICON_SVG } from './inspect-icon.js'
 
 const icon = (paths: string): string => `<svg viewBox="0 0 24 24" aria-hidden="true">${paths}</svg>`
 const liquidIcon = icon('<path d="M12 2.5c3.2 4.1 6.2 7.5 6.2 11.2a6.2 6.2 0 1 1-12.4 0C5.8 10 8.8 6.6 12 2.5Z"/><path d="M9 15.2c.5 1.4 1.5 2.1 3 2.1"/>')
-const inspectIcon = icon('<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><circle cx="12" cy="12" r="2.5"/>')
+const inspectIcon = INSPECT_ICON_SVG.replace('<svg ', '<svg class="inspect-icon" aria-hidden="true" ')
 const closeIcon = icon('<path d="m7 7 10 10M17 7 7 17"/>')
 
 export class ShopifyDevtools extends HTMLElement {
@@ -13,10 +14,11 @@ export class ShopifyDevtools extends HTMLElement {
   #tree: ComponentNode[] = this.#controller.tree
   #unsubscribe?: () => void
   #shownError?: Error
+  onInspectPage?: () => void
   #observer = new MutationObserver(() => this.#controller.refresh())
 
   connectedCallback(): void {
-    this.#shadow.innerHTML = `<style>${styles}.header-actions{display:flex;align-items:center;gap:4px}.panel-inspect{display:none;align-items:center;gap:7px;height:30px;padding:0 9px;border:1px solid var(--border);border-radius:7px;color:var(--muted);background:transparent;cursor:pointer}.panel-inspect:hover{background:var(--raised);color:var(--text)}.panel-inspect.active{border-color:var(--accent);background:var(--accent-soft);color:#c4b5fd}.panel-inspect span{font-size:12px;font-weight:600}</style>
+    this.#shadow.innerHTML = `<style>${styles}.inspect-icon{width:1.2em;height:1.2em;stroke-width:2;opacity:.5;color:#fff}@media(prefers-color-scheme:light){.inspect-icon{color:#000}}.header-actions{display:flex;align-items:center;gap:4px}.panel-inspect{display:none;align-items:center;gap:7px;height:30px;padding:0 9px;border:1px solid var(--border);border-radius:7px;color:var(--muted);background:transparent;cursor:pointer}.panel-inspect:hover{background:var(--raised);color:var(--text)}.panel-inspect.active{border-color:var(--accent);background:var(--accent-soft);color:#c4b5fd}.panel-inspect span{font-size:12px;font-weight:600}</style>
       <section id="panel" aria-label="Shopify Liquid DevTools">
         <header><div class="title">${liquidIcon}<strong>Liquid DevTools</strong><span class="badge">DEV</span></div><div class="header-actions"><button id="panel-inspect" class="panel-inspect" aria-label="Inspect Liquid component" aria-pressed="false">${inspectIcon}<span>Inspect page</span></button><button id="close" class="icon" aria-label="Close DevTools">${closeIcon}</button></div></header>
         <div class="workspace"><nav><div class="nav-title">Components</div><ol id="tree"></ol></nav><main id="details"><div class="empty">Select a component from the tree or activate the inspector.</div></main></div>
@@ -29,7 +31,7 @@ export class ShopifyDevtools extends HTMLElement {
       </div>`
     this.#shadow.querySelector('#toggle')?.addEventListener('click', () => this.togglePanel())
     this.#shadow.querySelector('#inspect')?.addEventListener('click', () => this.toggleInspector())
-    this.#shadow.querySelector('#panel-inspect')?.addEventListener('click', () => this.toggleInspector())
+    this.#shadow.querySelector('#panel-inspect')?.addEventListener('click', () => { if (this.onInspectPage) this.onInspectPage(); else this.toggleInspector() })
     this.#shadow.querySelector('#close')?.addEventListener('click', () => this.togglePanel(false))
     for (const event of shopifyEvents) document.addEventListener(event, this.#refreshEvent)
     this.#observer.observe(document.documentElement, { childList: true, subtree: true })
@@ -40,6 +42,7 @@ export class ShopifyDevtools extends HTMLElement {
   disconnectedCallback(): void {
     this.#observer.disconnect()
     this.#unsubscribe?.()
+    this.#controller.clearHighlight()
     for (const event of shopifyEvents) document.removeEventListener(event, this.#refreshEvent)
   }
 
@@ -77,7 +80,6 @@ export class ShopifyDevtools extends HTMLElement {
     button.className = 'tree-item'
     button.dataset.key = `${node.id}:${node.occurrence}`
     button.innerHTML = `<span class="kind ${node.kind}">${node.kind.slice(0, 1).toUpperCase()}</span><span><b>${node.file.split('/').at(-1)}</b><small>${node.kind}</small></span>`
-    button.addEventListener('pointerenter', () => this.#controller.highlight(node))
     button.addEventListener('click', () => this.select(node))
     item.append(button)
     if (node.children.length) {
@@ -141,19 +143,22 @@ if (!customElements.get('shopify-liquid-devtools')) customElements.define('shopi
 
 export default function setupShopifyDevtools(context: DockClientScriptContext): void {
   getInspectorController().setRpc(context.rpc)
+  deactivateInspectorOnDevtoolsNavigation(context)
   const mount = (panel: HTMLElement): void => {
     const host = (panel.querySelector('shopify-liquid-devtools') ?? document.createElement('shopify-liquid-devtools')) as ShopifyDevtools
     host.setAttribute('data-vite-devtools-panel', '')
+    if (context.docks) host.onInspectPage = () => void context.docks.switchEntry(INSPECT_ENTRY_ID)
     panel.append(host)
     if (!host.shadowRoot?.querySelector('#vite-devtools-native-layout')) {
       const nativeLayout = document.createElement('style')
       nativeLayout.id = 'vite-devtools-native-layout'
-      nativeLayout.textContent = `:host{position:relative!important;display:block!important;width:100%;height:100%;z-index:auto!important}#toolbar{display:none!important}.panel-inspect{display:flex!important}#close{display:none!important}#panel{position:relative!important;inset:auto!important;transform:none!important;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;border:0!important;border-radius:0!important;box-shadow:none!important;resize:none!important;opacity:1!important;visibility:visible!important}`
+      nativeLayout.textContent = `:host{position:relative!important;display:block!important;width:100%;height:100%;z-index:auto!important;pointer-events:inherit!important;opacity:inherit!important;visibility:inherit!important}#toolbar{display:none!important}.panel-inspect{display:flex!important}#close{display:none!important}#panel{position:relative!important;inset:auto!important;transform:none!important;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;border:0!important;border-radius:0!important;box-shadow:none!important;resize:none!important;opacity:1;visibility:inherit}`
       host.shadowRoot?.append(nativeLayout)
     }
     host.togglePanel(true)
   }
 
+  context.current.events.on('entry:deactivated', () => getInspectorController().clearHighlight())
   context.current.events.on('dom:panel:mounted', mount)
   const mountedPanel = context.current.domElements.panel
   if (mountedPanel) mount(mountedPanel)

@@ -4,12 +4,14 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 const section = { id: 'section:hero', kind: 'section', file: 'sections/hero.liquid', line: 1 }
 const marker = btoa(JSON.stringify(section))
 let client: typeof import('../src/client.js')
+let getInspectorController: typeof import('../src/inspector.js').getInspectorController
 let nativePanel: HTMLDivElement
 const rpcCall = vi.fn(async () => ({ ok: true }))
 
 beforeAll(async () => {
   document.body.innerHTML = `<!--shopify-devtools:start:${marker}--><section id="shopify-section-hero" class="hero">Hello</section><!--shopify-devtools:end:${marker}-->`
   client = await import('../src/client.js')
+  getInspectorController = (await import('../src/inspector.js')).getInspectorController
   nativePanel = document.createElement('div')
   document.documentElement.append(nativePanel)
   let mount: ((panel: HTMLElement) => void) | undefined
@@ -35,6 +37,10 @@ describe('browser panel', () => {
     expect(host?.shadowRoot?.querySelector('#vite-devtools-native-layout')?.textContent).toContain('#toolbar{display:none')
     const inspector = host?.shadowRoot?.querySelector('#panel-inspect') as HTMLButtonElement
     expect(inspector).toBeTruthy()
+    expect(inspector.querySelector('svg')?.getAttribute('viewBox')).toBe('0 0 24 24')
+    expect(inspector.querySelector('svg')?.classList.contains('inspect-icon')).toBe(true)
+    expect(inspector.querySelector('circle')?.getAttribute('r')).toBe('.5')
+    expect(inspector.querySelector('path')?.getAttribute('d')).toBe('M5 12a7 7 0 1 0 14 0a7 7 0 1 0-14 0m7-9v2m-9 7h2m7 7v2m7-9h2')
     inspector.click()
     expect(inspector.getAttribute('aria-pressed')).toBe('true')
     inspector.click()
@@ -57,7 +63,9 @@ describe('browser panel', () => {
     const host = document.querySelector('shopify-liquid-devtools')
     expect(host?.shadowRoot).toBeTruthy()
     expect(host?.shadowRoot?.querySelector('#toolbar')).toBeTruthy()
-    expect(host?.shadowRoot?.querySelector('#inspect')?.getAttribute('aria-pressed')).toBe('false')
+    const standaloneInspector = host?.shadowRoot?.querySelector('#inspect')
+    expect(standaloneInspector?.getAttribute('aria-pressed')).toBe('false')
+    expect(standaloneInspector?.querySelector('svg')?.classList.contains('inspect-icon')).toBe(true)
     expect(host?.shadowRoot?.textContent).toContain('hero.liquid')
   })
 
@@ -68,6 +76,35 @@ describe('browser panel', () => {
     expect(shadow?.querySelector('#details')?.textContent).toContain('Line1')
     ;(shadow?.querySelector('#details button') as HTMLButtonElement).click()
     await vi.waitFor(() => expect(rpcCall).toHaveBeenCalledWith('shopify-devtools:open-in-editor', { file: 'sections/hero.liquid', line: 1 }))
+  })
+
+  it('does not highlight or select page blocks when hovering a tree entry', () => {
+    getInspectorController().clearHighlight()
+    ;(document.querySelector('#shopify-section-hero') as HTMLElement).getBoundingClientRect = () => ({ x: 10, y: 20, left: 10, top: 20, right: 210, bottom: 120, width: 200, height: 100, toJSON: () => ({}) })
+    const item = document.querySelector('shopify-liquid-devtools')?.shadowRoot?.querySelector('#tree button') as HTMLButtonElement
+    item.dispatchEvent(new MouseEvent('pointerenter'))
+    expect(document.querySelector('[data-shopify-devtools-highlight]')).toBeNull()
+  })
+
+  it('selecting a tree entry only shows its details, without highlighting the page', () => {
+    const item = document.querySelector('shopify-liquid-devtools')?.shadowRoot?.querySelector('#tree button') as HTMLButtonElement
+    item.click()
+    expect(document.querySelector('[data-shopify-devtools-highlight]')).toBeNull()
+  })
+
+  it('Inspect page switches to the inspect dock like the dock icon', () => {
+    const switchEntry = vi.fn()
+    const panel = document.createElement('div')
+    document.documentElement.append(panel)
+    client.default({
+      rpc: { call: rpcCall },
+      docks: { switchEntry },
+      current: { domElements: { panel }, events: { on: vi.fn() } },
+    } as never)
+    const host = panel.querySelector('shopify-liquid-devtools')
+    ;(host?.shadowRoot?.querySelector('#panel-inspect') as HTMLButtonElement).click()
+    expect(switchEntry).toHaveBeenCalledWith('shopify-liquid:inspect')
+    panel.remove()
   })
 
   it('highlights the inspected component outside the dock and opens it directly', async () => {

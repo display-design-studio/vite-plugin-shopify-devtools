@@ -1,3 +1,4 @@
+import type { DockClientScriptContext } from '@vitejs/devtools-kit/client'
 import type { ComponentSource } from './protocol.js'
 
 export interface ComponentNode extends ComponentSource {
@@ -100,6 +101,9 @@ export function deepestAtPoint(nodes: ComponentNode[], x: number, y: number): Co
 }
 
 type Listener = (state: InspectorController) => void
+const watchedDocks = new WeakSet<object>()
+export const INSPECT_ENTRY_ID = 'shopify-liquid:inspect'
+const PANEL_ENTRY_ID = 'shopify-liquid'
 
 function isDevtoolsEvent(event: Event): boolean {
   return event.composedPath().some((target) => {
@@ -114,6 +118,11 @@ function isDevtoolsEvent(event: Event): boolean {
   })
 }
 
+function isInspectorControlEvent(event: Event): boolean {
+  return event.composedPath().some((target) => target instanceof Element
+    && (target.id === 'inspect' || target.id === 'panel-inspect'))
+}
+
 export class InspectorController {
   active = false
   tree: ComponentNode[] = []
@@ -122,6 +131,9 @@ export class InspectorController {
   rpc?: RpcCaller
   #overlay = document.createElement('div')
   #listeners = new Set<Listener>()
+  #highlighted?: ComponentNode
+  #suppressedClick?: { x: number; y: number; until: number }
+  #isBlocked: () => boolean = () => false
 
   constructor() {
     this.#overlay.dataset.shopifyDevtoolsHighlights = ''
@@ -129,6 +141,7 @@ export class InspectorController {
   }
 
   setRpc(rpc: unknown): void { this.rpc = rpc as RpcCaller }
+  setNavigationGuard(isBlocked: () => boolean): void { this.#isBlocked = isBlocked }
   subscribe(listener: Listener): () => void { this.#listeners.add(listener); listener(this); return () => this.#listeners.delete(listener) }
   refresh(): void { this.tree = componentTree(); this.#emit() }
 
@@ -138,16 +151,24 @@ export class InspectorController {
     if (!this.#overlay.isConnected) document.documentElement.append(this.#overlay)
     document.documentElement.style.cursor = 'crosshair'
     addEventListener('pointermove', this.#move, true)
+    addEventListener('pointerdown', this.#pointerDown, true)
+    addEventListener('focusin', this.#focusIn, true)
     addEventListener('click', this.#click, true)
     addEventListener('keydown', this.#key)
+    addEventListener('scroll', this.#refreshHighlight, true)
+    addEventListener('resize', this.#refreshHighlight)
     this.refresh()
   }
 
   deactivate(): void {
     this.active = false
     removeEventListener('pointermove', this.#move, true)
+    removeEventListener('pointerdown', this.#pointerDown, true)
+    removeEventListener('focusin', this.#focusIn, true)
     removeEventListener('click', this.#click, true)
     removeEventListener('keydown', this.#key)
+    removeEventListener('scroll', this.#refreshHighlight, true)
+    removeEventListener('resize', this.#refreshHighlight)
     document.documentElement.style.cursor = ''
     this.clearHighlight()
     this.#overlay.remove()
@@ -155,19 +176,28 @@ export class InspectorController {
   }
 
   toggle(): void { if (this.active) this.deactivate(); else this.activate() }
-  select(node: ComponentNode): void { this.selected = node; this.highlight(node); this.#emit() }
-  clearHighlight(): void { this.#overlay.replaceChildren() }
+  select(node: ComponentNode): void { this.selected = node; this.#emit() }
+  clearHighlight(): void { this.#highlighted = undefined; this.#overlay.replaceChildren() }
 
   highlight(node: ComponentNode): void {
     if (!this.#overlay.isConnected) document.documentElement.append(this.#overlay)
-    this.clearHighlight()
+    this.#highlighted = node
+    this.#overlay.replaceChildren()
     for (const root of node.roots) {
       const rect = root.getBoundingClientRect()
-      if (!rect.width && !rect.height) continue
+      if ((!rect.width && !rect.height) || rect.bottom <= 0 || rect.right <= 0 || rect.top >= innerHeight || rect.left >= innerWidth) continue
       const box = document.createElement('div')
       box.dataset.shopifyDevtoolsHighlight = ''
-      Object.assign(box.style, { position: 'fixed', boxSizing: 'border-box', pointerEvents: 'none', border: '2px solid #8b5cf6', background: '#8b5cf626', borderRadius: '2px', boxShadow: '0 0 0 1px #fff3 inset', left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px` })
-      this.#overlay.append(box)
+      Object.assign(box.style, { position: 'fixed', boxSizing: 'border-box', pointerEvents: 'none', border: '2px solid #00dc82', background: 'rgba(0,220,130,.16)', left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px` })
+      const badge = document.createElement('div')
+      badge.dataset.shopifyDevtoolsSource = ''
+      badge.textContent = `<${root.localName}> ${node.file}:${node.line}`
+      Object.assign(badge.style, { position: 'fixed', boxSizing: 'border-box', pointerEvents: 'none', zIndex: '1', maxWidth: 'calc(100vw - 8px)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '3px 6px', borderRadius: '3px', background: '#00dc82', color: '#fff', font: '11px/1.4 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace', left: `${Math.max(4, rect.left)}px`, top: `${rect.bottom}px` })
+      this.#overlay.append(box, badge)
+      const badgeWidth = badge.getBoundingClientRect().width || badge.offsetWidth
+      const badgeHeight = badge.getBoundingClientRect().height || badge.offsetHeight || 22
+      badge.style.left = `${Math.max(4, Math.min(rect.left, innerWidth - badgeWidth - 4))}px`
+      badge.style.top = `${rect.bottom + badgeHeight <= innerHeight ? rect.bottom : Math.max(0, rect.top - badgeHeight)}px`
     }
   }
 
@@ -188,22 +218,64 @@ export class InspectorController {
     const target = event.target instanceof Element ? event.target : null
     return target ? deepestForTarget(this.tree, target) : deepestAtPoint(this.tree, event.clientX, event.clientY)
   }
+  #blocked(): boolean {
+    if (!this.#isBlocked()) return false
+    this.deactivate()
+    return true
+  }
   #move = (event: PointerEvent): void => {
+    if (this.#blocked()) return
     if (isDevtoolsEvent(event)) {
       this.clearHighlight()
       return
     }
     const node = this.#node(event)
-    if (node) this.highlight(node)
+    if (node) this.highlight(node); else this.clearHighlight()
   }
-  #click = (event: MouseEvent): void => {
-    if (isDevtoolsEvent(event)) return
-    const node = this.#node(event)
-    if (!node) return
+  #refreshHighlight = (): void => { if (this.#highlighted) this.highlight(this.#highlighted) }
+  #pick(event: MouseEvent | PointerEvent, node: ComponentNode): void {
     event.preventDefault(); event.stopPropagation()
     this.select(node)
     this.clearHighlight()
-    void this.openEditor(node).catch((error) => console.error('[shopify-devtools] Could not open the editor:', error))
+    void this.openEditor(node)
+      .then(() => this.deactivate())
+      .catch((error) => console.error('[shopify-devtools] Could not open the editor:', error))
+  }
+  #pointerDown = (event: PointerEvent): void => {
+    if (this.#blocked()) return
+    if (isDevtoolsEvent(event)) {
+      if (!isInspectorControlEvent(event)) this.deactivate()
+      return
+    }
+    const node = this.#node(event)
+    if (!node) return
+    this.#suppressedClick = { x: event.clientX, y: event.clientY, until: Date.now() + 1_000 }
+    addEventListener('click', this.#suppressPickedClick, { capture: true, once: true })
+    this.#pick(event, node)
+  }
+  #focusIn = (event: FocusEvent): void => {
+    if (this.#blocked()) return
+    if (isDevtoolsEvent(event) && !isInspectorControlEvent(event)) this.deactivate()
+  }
+  #suppressPickedClick = (event: MouseEvent): void => {
+    const suppressed = this.#suppressedClick
+    this.#suppressedClick = undefined
+    if (suppressed && suppressed.until >= Date.now() && suppressed.x === event.clientX && suppressed.y === event.clientY) {
+      event.preventDefault(); event.stopPropagation()
+    }
+  }
+  #click = (event: MouseEvent): void => {
+    if (this.#blocked()) return
+    if (isDevtoolsEvent(event)) return
+    const suppressed = this.#suppressedClick
+    this.#suppressedClick = undefined
+    if (suppressed && suppressed.until >= Date.now() && suppressed.x === event.clientX && suppressed.y === event.clientY) {
+      event.preventDefault(); event.stopPropagation()
+      return
+    }
+    const node = this.#node(event)
+    if (!node) return
+    this.#pick(event, node)
   }
   #key = (event: KeyboardEvent): void => { if (event.key === 'Escape') this.deactivate() }
 }
@@ -214,4 +286,22 @@ type ControllerGlobal = typeof globalThis & { [controllerKey]?: InspectorControl
 export function getInspectorController(): InspectorController {
   const scope = globalThis as ControllerGlobal
   return scope[controllerKey] ??= new InspectorController()
+}
+
+export function deactivateInspectorOnDevtoolsNavigation(context: DockClientScriptContext): void {
+  if (!context.docks || !context.panel) return
+  const controller = getInspectorController()
+  const isForeignDock = (id: string | null | undefined): boolean => id != null && id !== INSPECT_ENTRY_ID && id !== PANEL_ENTRY_ID
+  controller.setNavigationGuard(() => isForeignDock(context.docks.selectedId))
+  if (watchedDocks.has(context.docks)) return
+  watchedDocks.add(context.docks)
+
+  for (const entry of context.docks.entries) {
+    if (entry.id === INSPECT_ENTRY_ID) continue
+    context.docks.getStateById(entry.id)?.events.on('entry:activated', () => controller.deactivate())
+  }
+
+  context.panel.events.on('panel:state:changed', (state) => {
+    if (state.state !== 'open' || isForeignDock(state.selectedDockId)) controller.deactivate()
+  })
 }

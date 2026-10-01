@@ -1,6 +1,7 @@
 import { realpath } from 'node:fs/promises'
 import { describe, expect, it, vi } from 'vitest'
 import shopifyDevtools, { shopifyDevtoolsBranding } from '../src/index.js'
+import { INSPECT_ICON } from '../src/inspect-icon.js'
 
 describe('Vite plugin', () => {
   it('only applies during serve and injects the client into the configured entry', () => {
@@ -41,13 +42,15 @@ describe('Vite plugin', () => {
     expect(register).toHaveBeenCalledWith(expect.objectContaining({
       id: 'shopify-liquid:inspect',
       type: 'action',
-      icon: 'ph:crosshair-duotone',
+      icon: INSPECT_ICON,
       action: expect.objectContaining({ importFrom: '/@id/__x00__virtual:shopify-devtools/action' }),
     }))
     expect(rpcRegister).toHaveBeenCalledWith(expect.objectContaining({ name: 'shopify-devtools:open-in-editor', type: 'action' }))
     expect(shopifyDevtoolsBranding.logo.light).toMatch(/^data:image\/svg\+xml;base64,/)
     expect(shopifyDevtoolsBranding.logo.dark).toMatch(/^data:image\/svg\+xml;base64,/)
     expect(shopifyDevtoolsBranding.logo.light).not.toBe(shopifyDevtoolsBranding.logo.dark)
+    expect(decodeURIComponent(INSPECT_ICON.light)).toContain('stroke="black"')
+    expect(decodeURIComponent(INSPECT_ICON.dark)).toContain('stroke="white"')
   })
 
   it('rejects an invalid editor RPC payload before launching an editor', async () => {
