@@ -132,7 +132,8 @@ export class InspectorController {
   #overlay = document.createElement('div')
   #listeners = new Set<Listener>()
   #highlighted?: ComponentNode
-  #suppressedClick?: { x: number; y: number; until: number }
+  #picking = false
+  #pointerPicked = false
   #isBlocked: () => boolean = () => false
 
   constructor() {
@@ -235,11 +236,14 @@ export class InspectorController {
   #refreshHighlight = (): void => { if (this.#highlighted) this.highlight(this.#highlighted) }
   #pick(event: MouseEvent | PointerEvent, node: ComponentNode): void {
     event.preventDefault(); event.stopPropagation()
+    if (this.#picking) return
+    this.#picking = true
     this.select(node)
     this.clearHighlight()
     void this.openEditor(node)
       .then(() => this.deactivate())
       .catch((error) => console.error('[shopify-devtools] Could not open the editor:', error))
+      .finally(() => { this.#picking = false })
   }
   #pointerDown = (event: PointerEvent): void => {
     if (this.#blocked()) return
@@ -249,30 +253,28 @@ export class InspectorController {
     }
     const node = this.#node(event)
     if (!node) return
-    this.#suppressedClick = { x: event.clientX, y: event.clientY, until: Date.now() + 1_000 }
-    addEventListener('click', this.#suppressPickedClick, { capture: true, once: true })
+    this.#pointerPicked = true
+    addEventListener('click', this.#swallowPickedClick, { capture: true, once: true })
+    setTimeout(() => this.#releasePickedClick(), 1_000)
     this.#pick(event, node)
   }
   #focusIn = (event: FocusEvent): void => {
     if (this.#blocked()) return
     if (isDevtoolsEvent(event) && !isInspectorControlEvent(event)) this.deactivate()
   }
-  #suppressPickedClick = (event: MouseEvent): void => {
-    const suppressed = this.#suppressedClick
-    this.#suppressedClick = undefined
-    if (suppressed && suppressed.until >= Date.now() && suppressed.x === event.clientX && suppressed.y === event.clientY) {
-      event.preventDefault(); event.stopPropagation()
-    }
+  // The pick happens on pointerdown, so its trailing click must not reach the page or pick again (even after deactivate).
+  #swallowPickedClick = (event: MouseEvent): void => {
+    this.#pointerPicked = false
+    event.preventDefault(); event.stopPropagation()
+  }
+  #releasePickedClick(): void {
+    this.#pointerPicked = false
+    removeEventListener('click', this.#swallowPickedClick, true)
   }
   #click = (event: MouseEvent): void => {
     if (this.#blocked()) return
     if (isDevtoolsEvent(event)) return
-    const suppressed = this.#suppressedClick
-    this.#suppressedClick = undefined
-    if (suppressed && suppressed.until >= Date.now() && suppressed.x === event.clientX && suppressed.y === event.clientY) {
-      event.preventDefault(); event.stopPropagation()
-      return
-    }
+    if (this.#pointerPicked) return this.#swallowPickedClick(event)
     const node = this.#node(event)
     if (!node) return
     this.#pick(event, node)
