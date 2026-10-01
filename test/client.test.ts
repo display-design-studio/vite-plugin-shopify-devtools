@@ -139,3 +139,30 @@ describe('browser panel', () => {
     await vi.waitFor(() => expect(shadow?.querySelector('#toast')?.textContent).toContain('Editor launcher failed'))
   })
 })
+
+describe('theme', () => {
+  it('follows the Vite DevTools theme instead of the OS preference', async () => {
+    const { resolveTheme, ShopifyDevtools } = await import('../src/client.js')
+    const store = new Map<string, string>()
+    vi.stubGlobal('localStorage', { getItem: (key: string) => store.get(key) ?? null, setItem: (key: string, value: string) => void store.set(key, value), removeItem: (key: string) => void store.delete(key) })
+    const dark = document.createElement('div'); dark.className = 'dark'
+    const light = document.createElement('div'); light.className = 'light'
+    expect(resolveTheme(light, true)).toBe('light')
+    expect(resolveTheme(dark, false)).toBe('dark')
+    localStorage.setItem('devframes-color-scheme', 'light')
+    expect(resolveTheme(null, true)).toBe('light')
+    localStorage.setItem('devframes-color-scheme', 'auto')
+    expect(resolveTheme(null, true)).toBe('dark')
+    localStorage.removeItem('devframes-color-scheme')
+
+    const host = new ShopifyDevtools()
+    light.append(host)
+    document.body.append(light)
+    expect(host.dataset.theme).toBe('light')
+    light.className = 'dark'
+    await new Promise((resolve) => setTimeout(resolve))
+    expect(host.dataset.theme).toBe('dark')
+    light.remove()
+    vi.unstubAllGlobals()
+  })
+})
