@@ -1,6 +1,6 @@
 import { realpath } from 'node:fs/promises'
 import { describe, expect, it, vi } from 'vitest'
-import shopifyDevtools, { resolveEntrypoints, shopifyDevtoolsBranding } from '../src/index.js'
+import shopifyDevtools, { devtoolsConfigWarning, resolveEntrypoints, shopifyDevtoolsBranding, shopifyDevtoolsConfig } from '../src/index.js'
 import { INSPECT_ICON } from '../src/inspect-icon.js'
 
 describe('Vite plugin', () => {
@@ -36,6 +36,12 @@ describe('Vite plugin', () => {
     const transform = plugin.transform as (code: string, id: string) => { code: string } | undefined
     expect(transform('x', '/theme/frontend/entrypoints/ts/product.ts?t=1')?.code).toContain("import 'virtual:shopify-devtools/client'")
     expect(transform('x', '/theme/frontend/other.ts')).toBeUndefined()
+  })
+
+  it('warns when the devtools config is missing or not the Shopify preset', () => {
+    expect(devtoolsConfigWarning(false)).toContain('shopifyDevtoolsConfig')
+    expect(devtoolsConfigWarning({ builtinDevTools: true, branding: shopifyDevtoolsBranding })).toContain('builtinDevTools: false')
+    expect(devtoolsConfigWarning({ ...shopifyDevtoolsConfig })).toBeUndefined()
   })
 
   it('adds configured Shopify origins to Vite CORS for the embedded bootstrap', () => {

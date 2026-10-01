@@ -14,18 +14,10 @@ Vite 8.3 or newer is required. The plugin enables Vite DevTools for `vite serve`
 // vite.config.ts
 import { defineConfig } from 'vite'
 import shopify from 'vite-plugin-shopify'
-import shopifyDevtools, { shopifyDevtoolsBranding } from 'vite-plugin-shopify-devtools'
+import shopifyDevtools, { shopifyDevtoolsConfig } from 'vite-plugin-shopify-devtools'
 
 export default defineConfig({
-  devtools: {
-    apply: 'serve',
-    embeddedVisibility: 'normal',
-    // Shopify serves the page from another origin. Disable Vite+'s optional
-    // launchers, whose icons use root-relative URLs on the page origin.
-    builtinDevTools: false,
-    // Inline branding prevents root-relative asset requests on Shopify.
-    branding: shopifyDevtoolsBranding,
-  },
+  devtools: shopifyDevtoolsConfig,
   plugins: [
     shopify(),
     shopifyDevtools({
@@ -72,7 +64,7 @@ export default defineConfig({
 
 - [x] **A1. Optional `entry`**: auto-detect entrypoints from the `build.rollupOptions.input` resolved by `vite-plugin-shopify` (barrel/shopify-vite) and inject the client into all of them. `entry` stays as an override.
 - [x] **A2. Optional `allowedOrigins`**: always allow `127.0.0.1:9292` / `localhost:9292`, `*.myshopify.com`, and the store from `SHOPIFY_STORE_DOMAIN` or `shopify.theme.toml`. Verify the merge with a user-defined `server.cors`.
-- [ ] **A3. `devtools` block**: Vite rejects plugins changing `devtools` from `config()`, so export a `shopifyDevtoolsConfig` preset and warn in `configResolved` when `devtools` is missing or misconfigured. Spike: return the `DevTools()` plugins from `shopifyDevtools()` for zero config.
+- [~] **A3. (preset + warning done, zero-config spike pending) `devtools` block**: Vite rejects plugins changing `devtools` from `config()`, so export a `shopifyDevtoolsConfig` preset and warn in `configResolved` when `devtools` is missing or misconfigured. Spike: return the `DevTools()` plugins from `shopifyDevtools()` for zero config.
 - [ ] **A4. Cleanup**: read `themeRoot` from the resolved Vite config in `src/cli.ts` and `src/mirror.ts`; simplify the playground config; update this README.
 
 ### B. Shopify branding in Vite DevTools style

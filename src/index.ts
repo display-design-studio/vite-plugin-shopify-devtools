@@ -33,6 +33,28 @@ export const shopifyDevtoolsBranding = {
   windowTitle: 'Shopify Liquid DevTools',
 } as const
 
+/**
+ * Preset for the `devtools` option of the Vite config. Vite reads `devtools`
+ * before plugin `config` hooks run, so a plugin cannot set it for the user.
+ */
+export const shopifyDevtoolsConfig = {
+  apply: 'serve',
+  embeddedVisibility: 'normal',
+  // Shopify serves the page from another origin: Vite+'s optional launchers use
+  // root-relative icon URLs that would resolve against the Shopify origin.
+  builtinDevTools: false,
+  branding: shopifyDevtoolsBranding,
+} as const
+
+export function devtoolsConfigWarning(devtools: unknown): string | undefined {
+  const expected = 'Add `devtools: shopifyDevtoolsConfig` to your Vite config (import it from vite-plugin-shopify-devtools).'
+  if (!devtools) return `Vite DevTools is disabled, so Shopify Liquid DevTools will not appear. ${expected}`
+  const resolved = devtools as { builtinDevTools?: boolean, branding?: { logo?: unknown } }
+  if (resolved.builtinDevTools !== false || resolved.branding?.logo !== shopifyDevtoolsBranding.logo) {
+    return `Vite DevTools needs inline branding and \`builtinDevTools: false\` on Shopify-hosted pages, otherwise icons request root-relative URLs from the Shopify origin. ${expected}`
+  }
+}
+
 export interface ShopifyDevtoolsOptions {
   entry?: string
   editor?: string
@@ -199,6 +221,10 @@ export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): P
           }),
         }) as never)
       },
+    },
+    configureServer(server) {
+      const warning = devtoolsConfigWarning((server.config as { devtools?: unknown }).devtools)
+      if (warning) server.config.logger.warn(`[shopify-devtools] ${warning}`)
     },
     configResolved(config) {
       serve = config.command === 'serve'
