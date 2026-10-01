@@ -18,6 +18,8 @@ describe('Vite plugin', () => {
     expect(virtualModule).toContain("connectionUrl=origin+'/__devtools/__connection.json'")
     expect(virtualModule).toContain('__DEVFRAME_CONNECTION__')
     expect(virtualModule).toContain("/__devtools/embedded.js")
+    expect(virtualModule).toContain('devframes-dock-embedded')
+    expect(virtualModule).toContain('--devframes-dock-minimized-size:24px')
     expect(plugin.devtools).toBeTruthy()
   })
 
@@ -36,6 +38,12 @@ describe('Vite plugin', () => {
     const transform = plugin.transform as (code: string, id: string) => { code: string } | undefined
     expect(transform('x', '/theme/frontend/entrypoints/ts/product.ts?t=1')?.code).toContain("import 'virtual:shopify-devtools/client'")
     expect(transform('x', '/theme/frontend/other.ts')).toBeUndefined()
+  })
+
+  it('generates a client module that is valid JavaScript', () => {
+    const code = (shopifyDevtools().load as (id: string) => string)('\0virtual:shopify-devtools/client')
+    const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as new (body: string) => unknown
+    expect(() => new AsyncFunction(code.replace('import.meta.url', "'http://localhost:5173/client.js'").replace('import(/* @vite-ignore */devtoolsClient)', 'import(devtoolsClient)'))).not.toThrow()
   })
 
   it('warns when the devtools config is missing or not the Shopify preset', () => {

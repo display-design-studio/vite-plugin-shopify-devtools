@@ -14,6 +14,10 @@ const RENDERER_URL = `/@id/__x00__${RENDERER_PUBLIC_ID}`
 const ACTION_PUBLIC_ID = 'virtual:shopify-devtools/action'
 const ACTION_ID = `\0${ACTION_PUBLIC_ID}`
 const ACTION_URL = `/@id/__x00__${ACTION_PUBLIC_ID}`
+// Collapsed, Vite DevTools shows its logo in a 22px circle with 2px vertical padding, so the logo
+// renders at 18px. A 24px circle shows it at 20px, the size of the icons in the open dock.
+const MINIMIZED_SIZE_CSS = '#devframes-anchor.devframes-minimized #devframes-dock{--devframes-dock-minimized-size:24px}'
+const MINIMIZED_SIZE_SCRIPT = `const applyMinimizedSize=()=>{const host=document.querySelector('devframes-dock-embedded');if(!host?.shadowRoot)return false;if(!host.shadowRoot.querySelector('style[data-shopify-devtools]')){const style=document.createElement('style');style.dataset.shopifyDevtools='';style.textContent=${JSON.stringify(MINIMIZED_SIZE_CSS)};host.shadowRoot.append(style)}return true};if(!applyMinimizedSize()){const observer=new MutationObserver(()=>{if(applyMinimizedSize())observer.disconnect()});observer.observe(document.documentElement,{childList:true,subtree:true});setTimeout(()=>observer.disconnect(),10000)}`
 const svgDataUri = (name: string): string => {
   const source = readFileSync(new URL(`../assets/shopify/${name}`, import.meta.url))
   return `data:image/svg+xml;base64,${source.toString('base64')}`
@@ -244,7 +248,7 @@ export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): P
       if (id === ACTION_PUBLIC_ID || id === ACTION_ID) return ACTION_ID
     },
     load(id) {
-      if (id === CLIENT_ID) return `const origin=new URL(import.meta.url).origin;const connectionUrl=origin+'/__devtools/__connection.json';const connectionResponse=await fetch(connectionUrl);if(!connectionResponse.ok)throw new Error('Unable to load Vite DevTools connection metadata ('+connectionResponse.status+')');const connectionMeta=await connectionResponse.json();globalThis.__DEVFRAME_CONNECTION__={connectionMeta,metaBaseUrl:connectionResponse.url||connectionUrl,authToken:connectionMeta.authToken};const devtoolsClient=origin+'/__devtools/embedded.js';await import(/* @vite-ignore */devtoolsClient);`
+      if (id === CLIENT_ID) return `const origin=new URL(import.meta.url).origin;const connectionUrl=origin+'/__devtools/__connection.json';const connectionResponse=await fetch(connectionUrl);if(!connectionResponse.ok)throw new Error('Unable to load Vite DevTools connection metadata ('+connectionResponse.status+')');const connectionMeta=await connectionResponse.json();globalThis.__DEVFRAME_CONNECTION__={connectionMeta,metaBaseUrl:connectionResponse.url||connectionUrl,authToken:connectionMeta.authToken};const devtoolsClient=origin+'/__devtools/embedded.js';await import(/* @vite-ignore */devtoolsClient);${MINIMIZED_SIZE_SCRIPT}`
       if (id === RENDERER_ID) return `export { default } from ${JSON.stringify(new URL('./client.js', import.meta.url).href)};`
       if (id === ACTION_ID) return `export { default } from ${JSON.stringify(new URL('./action.js', import.meta.url).href)};`
     },
