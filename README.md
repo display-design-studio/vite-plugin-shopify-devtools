@@ -47,7 +47,7 @@ Open in editor uses the authenticated Vite DevTools RPC connection. The server r
 
 This MVP intentionally excludes Theme Editor iframe integration, Liquid profiling, cart debugging, variable serialization, and npm publication. A marker opens the component definition/root line, not the exact line of every internal HTML element.
 
-Official Shopify glyph variants are kept in `assets/shopify/` for the dock button and future light/dark treatments.
+The dock button, logo, and favicon use the full-color Shopify bag (`assets/shopify/shopify-glyph.svg`) on both themes. The black and white glyph variants stay in `assets/shopify/` for monochrome treatments.
 
 ## Roadmap / TODO
 

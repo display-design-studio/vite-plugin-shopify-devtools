@@ -78,7 +78,7 @@ describe('Vite plugin', () => {
     expect(rpcRegister).toHaveBeenCalledWith(expect.objectContaining({ name: 'shopify-devtools:open-in-editor', type: 'action' }))
     expect(shopifyDevtoolsBranding.logo.light).toMatch(/^data:image\/svg\+xml;base64,/)
     expect(shopifyDevtoolsBranding.logo.dark).toMatch(/^data:image\/svg\+xml;base64,/)
-    expect(shopifyDevtoolsBranding.logo.light).not.toBe(shopifyDevtoolsBranding.logo.dark)
+    expect(decodeURIComponent(atob(shopifyDevtoolsBranding.logo.light.split(',')[1]))).toContain('#95BF47')
     expect(decodeURIComponent(INSPECT_ICON.light)).toContain('stroke="black"')
     expect(decodeURIComponent(INSPECT_ICON.dark)).toContain('stroke="white"')
   })

@@ -19,9 +19,10 @@ const svgDataUri = (name: string): string => {
   return `data:image/svg+xml;base64,${source.toString('base64')}`
 }
 
+// The full-color bag reads on both themes, so light and dark share one file.
 const SHOPIFY_GLYPH = {
-  light: svgDataUri('shopify-glyph-black.svg'),
-  dark: svgDataUri('shopify-glyph-white.svg'),
+  light: svgDataUri('shopify-glyph.svg'),
+  dark: svgDataUri('shopify-glyph.svg'),
 } as const
 
 export const shopifyDevtoolsBranding = {
