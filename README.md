@@ -32,7 +32,6 @@ export default defineConfig({
       // Optional: force Zed instead of relying on environment variables or
       // installed-editor detection.
       editor: 'zed',
-      allowedOrigins: [],
     }),
   ],
 })
@@ -50,7 +49,7 @@ Open **Shopify Liquid** from the Vite DevTools dock. Use **Inspect page** in the
 
 The Vite plugin registers a native `custom-render` panel through `devtools.setup`, so the component tree and inspector live inside Vite's shared dock rather than a separate imitation toolbar. The CLI copies only Shopify theme directories to an OS temporary directory, instruments Liquid there with `@shopify/liquid-html-parser`, keeps the copy synchronized, and deletes it on shutdown. Static `{% render 'snippet' %}` calls in safe HTML contexts receive comment boundaries. Dynamic or unsafe renders fall back to their enclosing component. Sections and theme-block files get root boundaries; Shopify wrapper IDs and `block.shopify_attributes` provide runtime identity.
 
-Open in editor uses the authenticated Vite DevTools RPC connection. The server resolves real paths and refuses files outside the theme root before launching the editor. Editor selection follows `editor` in the plugin options, then `SHOPIFY_DEVTOOLS_EDITOR`, then `EDITOR`. On macOS, when none of those are set, the plugin auto-detects Zed, Cursor, or Visual Studio Code (in that order). For example, use `editor: 'zed'` to select Zed explicitly. Configure `SHOPIFY_STORE_DOMAIN` for a tunneled Shopify preview and add any explicit Vite tunnel origin to `allowedOrigins` for the cross-origin DevTools bootstrap.
+Open in editor uses the authenticated Vite DevTools RPC connection. The server resolves real paths and refuses files outside the theme root before launching the editor. Editor selection follows `editor` in the plugin options, then `SHOPIFY_DEVTOOLS_EDITOR`, then `EDITOR`. On macOS, when none of those are set, the plugin auto-detects Zed, Cursor, or Visual Studio Code (in that order). For example, use `editor: 'zed'` to select Zed explicitly. The cross-origin DevTools bootstrap is allowed automatically for the Shopify CLI preview (`127.0.0.1:9292`, `localhost:9292`), `*.myshopify.com`, and the store from `SHOPIFY_STORE_DOMAIN`, `SHOPIFY_FLAG_STORE`, or `shopify.theme.toml`. Only custom domains or tunnels need `allowedOrigins`.
 
 ## Scope
 
@@ -72,7 +71,7 @@ export default defineConfig({
 ```
 
 - [x] **A1. Optional `entry`**: auto-detect entrypoints from the `build.rollupOptions.input` resolved by `vite-plugin-shopify` (barrel/shopify-vite) and inject the client into all of them. `entry` stays as an override.
-- [ ] **A2. Optional `allowedOrigins`**: always allow `127.0.0.1:9292` / `localhost:9292`, `*.myshopify.com`, and the store from `SHOPIFY_STORE_DOMAIN` or `shopify.theme.toml`. Verify the merge with a user-defined `server.cors`; remove or use the dead `isAllowedOrigin`.
+- [x] **A2. Optional `allowedOrigins`**: always allow `127.0.0.1:9292` / `localhost:9292`, `*.myshopify.com`, and the store from `SHOPIFY_STORE_DOMAIN` or `shopify.theme.toml`. Verify the merge with a user-defined `server.cors`.
 - [ ] **A3. `devtools` block**: Vite rejects plugins changing `devtools` from `config()`, so export a `shopifyDevtoolsConfig` preset and warn in `configResolved` when `devtools` is missing or misconfigured. Spike: return the `DevTools()` plugins from `shopifyDevtools()` for zero config.
 - [ ] **A4. Cleanup**: read `themeRoot` from the resolved Vite config in `src/cli.ts` and `src/mirror.ts`; simplify the playground config; update this README.
 

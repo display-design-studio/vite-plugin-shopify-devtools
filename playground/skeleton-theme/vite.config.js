@@ -1,23 +1,12 @@
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath, URL } from 'node:url';
-import { defaultAllowedOrigins, defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import shopify from 'vite-plugin-shopify';
 import shopifyDevtools, { shopifyDevtoolsBranding } from 'vite-plugin-shopify-devtools';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const isTunnelEnabled = env.SHOPIFY_VITE_TUNNEL === 'true';
-  const storeDomain = env.SHOPIFY_STORE_DOMAIN;
-  const corsOrigins = [
-    defaultAllowedOrigins,
-    'http://127.0.0.1:9292',
-    'http://localhost:9292',
-  ];
-
-  if (storeDomain) {
-    corsOrigins.push(`https://${storeDomain}`);
-  }
-
   return {
     devtools: {
       apply: 'serve',
@@ -27,9 +16,7 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       shopify({ tunnel: isTunnelEnabled }),
-      shopifyDevtools({
-        allowedOrigins: storeDomain ? [`https://${storeDomain}`] : [],
-      }),
+      shopifyDevtools(),
       tailwindcss(),
     ],
     publicDir: 'public',
@@ -45,9 +32,6 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       strictPort: true,
-      cors: {
-        origin: corsOrigins,
-      },
     },
   };
 });

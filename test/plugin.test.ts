@@ -40,8 +40,9 @@ describe('Vite plugin', () => {
 
   it('adds configured Shopify origins to Vite CORS for the embedded bootstrap', () => {
     const plugin = shopifyDevtools({ allowedOrigins: ['https://shop.example'] })
-    const config = (plugin.config as () => { server: { cors: { origin: unknown[] } } })()
+    const config = (plugin.config as (c: object, e: object) => { server: { cors: { origin: unknown[] } } })({ root: process.cwd() }, { mode: 'development', command: 'serve' })
     expect(config.server.cors.origin).toContain('https://shop.example')
+    expect(config.server.cors.origin).toContain('http://127.0.0.1:9292')
   })
 
   it('uses origin-safe icons for Shopify-hosted pages', async () => {

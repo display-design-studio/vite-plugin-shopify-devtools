@@ -2,7 +2,7 @@ import { mkdtemp, realpath, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { isAllowedOrigin, launchEditor, resolveThemeFile } from '../src/index.js'
+import { launchEditor, resolveAllowedOrigins, resolveThemeFile } from '../src/index.js'
 
 describe('open-editor security', () => {
   it('rejects traversal and symlinks outside the theme root', async () => {
@@ -14,13 +14,20 @@ describe('open-editor security', () => {
     await expect(resolveThemeFile(root, 'escape.liquid')).rejects.toThrow('outside')
   })
 
-  it('allows only configured, local, store, or server origins', () => {
-    const server = { config: { server: { host: 'vite.example.test' } } } as never
-    expect(isAllowedOrigin(undefined, server, [])).toBe(true)
-    expect(isAllowedOrigin('http://127.0.0.1:9292', server, [])).toBe(true)
-    expect(isAllowedOrigin('https://preview.example', server, ['https://preview.example'])).toBe(true)
-    expect(isAllowedOrigin('https://evil.example', server, [])).toBe(false)
-    expect(isAllowedOrigin('not a url', server, [])).toBe(false)
+  it('allows the Shopify CLI preview, myshopify.com, the configured store, and extras only', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'theme-origins-'))
+    await writeFile(path.join(root, 'shopify.theme.toml'), '[environments.development]\nstore = "toml-shop.myshopify.com"\n')
+    const origins = resolveAllowedOrigins(root, { SHOPIFY_STORE_DOMAIN: 'env-shop.myshopify.com' }, ['https://tunnel.example'])
+    expect(origins).toEqual(expect.arrayContaining([
+      'http://127.0.0.1:9292', 'http://localhost:9292',
+      'https://env-shop.myshopify.com', 'https://toml-shop.myshopify.com', 'https://tunnel.example',
+    ]))
+    const regexes = origins.filter((origin): origin is RegExp => origin instanceof RegExp)
+    const allowed = (origin: string): boolean => regexes.some((regex) => regex.test(origin))
+    expect(allowed('https://any-shop.myshopify.com')).toBe(true)
+    expect(allowed('https://evil.example')).toBe(false)
+    expect(allowed('https://myshopify.com.evil.example')).toBe(false)
+    expect(resolveAllowedOrigins(await mkdtemp(path.join(os.tmpdir(), 'theme-origins-')), {})).not.toContain('https://undefined')
   })
 
   it('reports launcher failures instead of returning a false success', async () => {

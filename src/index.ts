@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process'
 import path from 'node:path'
 import launchEditorProcess from 'launch-editor'
 import { defineRpcFunction } from '@vitejs/devtools-kit'
-import { defaultAllowedOrigins, type Plugin, type ViteDevServer } from 'vite'
+import { defaultAllowedOrigins, loadEnv, type Plugin } from 'vite'
 import { INSPECT_ICON } from './inspect-icon.js'
 
 const CLIENT_ID = '\0virtual:shopify-devtools/client'
@@ -39,16 +39,27 @@ export interface ShopifyDevtoolsOptions {
   allowedOrigins?: string[]
 }
 
-export function isAllowedOrigin(origin: string | undefined, server: Pick<ViteDevServer, 'config'>, configured: string[]): boolean {
-  if (!origin) return true
-  if (configured.includes(origin)) return true
+const SHOPIFY_CLI_ORIGINS = ['http://127.0.0.1:9292', 'http://localhost:9292']
+const MYSHOPIFY_ORIGIN = /^https?:\/\/([^.]+\.)*myshopify\.com(:\d+)?$/
+
+const storeOrigin = (store: string): string | undefined => {
+  const host = store.trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '')
+  return host ? `https://${host}` : undefined
+}
+
+/** Origins that may load the DevTools bootstrap from Vite: Shopify CLI preview, the store, and user extras. */
+export function resolveAllowedOrigins(root: string, env: Record<string, string | undefined>, extra: string[] = []): Array<string | RegExp> {
+  const stores = [env.SHOPIFY_STORE_DOMAIN, env.SHOPIFY_FLAG_STORE]
   try {
-    const parsed = new URL(origin)
-    const host = server.config.server.host
-    if (['localhost', '127.0.0.1', '::1'].includes(parsed.hostname)) return true
-    if (process.env.SHOPIFY_STORE_DOMAIN === parsed.hostname) return true
-    return typeof host === 'string' && parsed.hostname === host
-  } catch { return false }
+    const toml = readFileSync(path.join(root, 'shopify.theme.toml'), 'utf8')
+    for (const match of toml.matchAll(/^\s*store\s*=\s*["']([^"']+)["']/gm)) stores.push(match[1])
+  } catch { /* No shopify.theme.toml: rely on env and defaults. */ }
+  const origins = new Set<string>([...SHOPIFY_CLI_ORIGINS, ...extra])
+  for (const store of stores) {
+    const origin = store && storeOrigin(store)
+    if (origin) origins.add(origin)
+  }
+  return [defaultAllowedOrigins, MYSHOPIFY_ORIGIN, ...origins]
 }
 
 export async function resolveThemeFile(root: string, file: string): Promise<string> {
@@ -137,9 +148,10 @@ export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): P
     name: 'vite-plugin-shopify-devtools',
     enforce: 'pre',
     apply: 'serve',
-    config() {
-      if (!options.allowedOrigins?.length) return
-      return { server: { cors: { origin: [defaultAllowedOrigins, ...options.allowedOrigins] } } }
+    config(userConfig, { mode }) {
+      const root = path.resolve(userConfig.root ?? process.cwd())
+      const env = { ...loadEnv(mode, userConfig.envDir === false ? root : path.resolve(root, userConfig.envDir ?? ''), ''), ...process.env }
+      return { server: { cors: { origin: resolveAllowedOrigins(root, env, options.allowedOrigins) } } }
     },
     devtools: {
       setup(context) {
