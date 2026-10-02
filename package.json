@@ -1,6 +1,6 @@
 {
   "name": "@display-studio/vite-plugin-shopify-devtools",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Source-aware Shopify theme devtools for Vite",
   "type": "module",
   "license": "MIT",
