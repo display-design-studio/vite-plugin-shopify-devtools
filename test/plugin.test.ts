@@ -1,4 +1,6 @@
-import { realpath } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, writeFile } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import shopifyDevtools, { devtoolsConfigWarning, resolveEntrypoints, resolveThemeRoot, shopifyDevtoolsBranding, shopifyDevtoolsConfig, viteVersionWarning } from '../src/index.js'
 import { INSPECT_ICON } from '../src/inspect-icon.js'
@@ -59,6 +61,13 @@ describe('Vite plugin', () => {
     expect(devtoolsConfigWarning(structuredClone(shopifyDevtoolsConfig))).toBeUndefined()
   })
 
+  it('reads the preset from the shape Vite resolves it to', () => {
+    const resolved = { enabled: true, apply: 'serve', config: structuredClone(shopifyDevtoolsConfig) }
+    expect(devtoolsConfigWarning(resolved)).toBeUndefined()
+    expect(devtoolsConfigWarning({ ...resolved, config: { ...resolved.config, builtinDevTools: true } })).toContain('builtinDevTools: false')
+    expect(devtoolsConfigWarning({ enabled: false, config: {} })).toContain('disabled')
+  })
+
   it('warns when the installed Vite does not support the devtools option', () => {
     expect(viteVersionWarning('7.1.7')).toContain('requires Vite 8.3')
     expect(viteVersionWarning('8.2.9')).toContain('Vite 8.2.9 is installed')
@@ -99,6 +108,7 @@ describe('Vite plugin', () => {
       action: expect.objectContaining({ importFrom: '/@id/__x00__virtual:shopify-devtools/action' }),
     }))
     expect(rpcRegister).toHaveBeenCalledWith(expect.objectContaining({ name: 'shopify-devtools:open-in-editor', type: 'action' }))
+    expect(rpcRegister).toHaveBeenCalledWith(expect.objectContaining({ name: 'shopify-devtools:resolve-sections', type: 'action' }))
     expect(shopifyDevtoolsBranding.logo.light).toMatch(/^data:image\/svg\+xml;base64,/)
     expect(shopifyDevtoolsBranding.logo.dark).toMatch(/^data:image\/svg\+xml;base64,/)
     expect(decodeURIComponent(atob(shopifyDevtoolsBranding.logo.light.split(',')[1]))).toContain('#4AC93E')
@@ -108,10 +118,10 @@ describe('Vite plugin', () => {
 
   it('rejects an invalid editor RPC payload before launching an editor', async () => {
     const plugin = shopifyDevtools()
-    let definition: { setup: () => { handler: (input: unknown) => Promise<unknown> } } | undefined
+    let definition: { name?: string; setup: () => { handler: (input: unknown) => Promise<unknown> } } | undefined
     await plugin.devtools?.setup?.({
       docks: { register: vi.fn() },
-      rpc: { register: (value: typeof definition) => { definition = value } },
+      rpc: { register: (value: typeof definition) => { if (value?.name === 'shopify-devtools:open-in-editor') definition = value } },
       viteConfig: { root: process.cwd() },
     } as never)
     const handler = definition?.setup().handler
@@ -119,13 +129,27 @@ describe('Vite plugin', () => {
     await expect(handler?.({ file: '../outside.liquid', line: 1 })).rejects.toThrow()
   })
 
+  it('resolves rendered sections to theme files through RPC', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'devtools-rpc-'))
+    await mkdir(path.join(root, 'sections'))
+    await writeFile(path.join(root, 'sections', 'feed-artists.liquid'), '<div></div>')
+    const plugin = shopifyDevtools()
+    let definition: { name?: string; setup: () => { handler: (input: unknown) => Promise<unknown> } } | undefined
+    await plugin.devtools?.setup?.({
+      docks: { register: vi.fn() },
+      rpc: { register: (value: typeof definition) => { if (value?.name === 'shopify-devtools:resolve-sections') definition = value } },
+      viteConfig: { root, build: { outDir: 'assets' } },
+    } as never)
+    expect(await definition?.setup().handler({ ids: ['shopify-section-feed-artists'] })).toEqual({ 'shopify-section-feed-artists': { file: 'sections/feed-artists.liquid', line: 1, kind: 'section' } })
+  })
+
   it('opens a validated file through the configured plugin launcher', async () => {
     const plugin = shopifyDevtools({ editor: 'true' })
-    let definition: { setup: () => { handler: (input: { file: string; line: number }) => Promise<unknown> } } | undefined
+    let definition: { name?: string; setup: () => { handler: (input: { file: string; line: number }) => Promise<unknown> } } | undefined
     const invokeLocal = vi.fn(async () => undefined)
     await plugin.devtools?.setup?.({
       docks: { register: vi.fn() },
-      rpc: { register: (value: typeof definition) => { definition = value }, invokeLocal },
+      rpc: { register: (value: typeof definition) => { if (value?.name === 'shopify-devtools:open-in-editor') definition = value }, invokeLocal },
       viteConfig: { root: process.cwd() },
     } as never)
     const result = await definition?.setup().handler({ file: 'package.json', line: 2 })
@@ -135,11 +159,11 @@ describe('Vite plugin', () => {
 
   it('propagates configured launcher failures through RPC', async () => {
     const plugin = shopifyDevtools({ editor: 'definitely-not-an-editor-command' })
-    let definition: { setup: () => { handler: (input: { file: string; line: number }) => Promise<unknown> } } | undefined
+    let definition: { name?: string; setup: () => { handler: (input: { file: string; line: number }) => Promise<unknown> } } | undefined
     const invokeLocal = vi.fn(async () => undefined)
     await plugin.devtools?.setup?.({
       docks: { register: vi.fn() },
-      rpc: { register: (value: typeof definition) => { definition = value }, invokeLocal },
+      rpc: { register: (value: typeof definition) => { if (value?.name === 'shopify-devtools:open-in-editor') definition = value }, invokeLocal },
       viteConfig: { root: process.cwd() },
     } as never)
     await expect(definition?.setup().handler({ file: 'package.json', line: 2 })).rejects.toThrow()

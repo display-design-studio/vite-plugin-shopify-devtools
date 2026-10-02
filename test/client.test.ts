@@ -6,7 +6,7 @@ const marker = btoa(JSON.stringify(section))
 let client: typeof import('../src/client.js')
 let getInspectorController: typeof import('../src/inspector.js').getInspectorController
 let nativePanel: HTMLDivElement
-const rpcCall = vi.fn(async () => ({ ok: true }))
+const rpcCall = vi.fn<(name: string, input?: unknown) => Promise<unknown>>(async () => ({ ok: true }))
 
 beforeAll(async () => {
   document.body.innerHTML = `<!--shopify-devtools:start:${marker}--><section id="shopify-section-hero" class="hero">Hello</section><!--shopify-devtools:end:${marker}-->`
@@ -167,11 +167,24 @@ describe('theme', () => {
   })
 })
 
-describe('empty page', () => {
-  it('explains how to start the instrumented theme when no component is found', async () => {
-    document.body.innerHTML = '<main>Plain Shopify page</main>'
+describe('pages without markers', () => {
+  it('lists the sections Shopify renders when the theme is not instrumented', async () => {
+    rpcCall.mockClear()
+    rpcCall.mockImplementation(async (name: string, input: unknown) => name === 'shopify-devtools:resolve-sections'
+      ? { 'shopify-section-template--1__hero': { file: 'sections/hero.liquid', line: 1, kind: 'section' } }
+      : { ok: true, input })
+    document.body.innerHTML = '<div id="shopify-section-template--1__hero" class="shopify-section">Hero</div><div id="shopify-section-unknown">Other</div>'
     const shadow = document.querySelector('shopify-liquid-devtools')?.shadowRoot
-    await vi.waitFor(() => expect(shadow?.querySelector('#tree .tree-empty')?.textContent).toContain('shopify-devtools dev'))
+    await vi.waitFor(() => expect(shadow?.querySelector('#tree .tree-empty')?.textContent ?? '').toContain('Sections only'))
+    expect(shadow?.querySelectorAll('#tree button')).toHaveLength(1)
+    expect(shadow?.querySelector('#tree')?.textContent).toContain('hero.liquid')
+    expect(rpcCall).toHaveBeenCalledWith('shopify-devtools:resolve-sections', expect.objectContaining({ ids: expect.arrayContaining(['shopify-section-template--1__hero']) }))
+  })
+
+  it('says so when the page has no sections at all', async () => {
+    document.body.innerHTML = '<main>Plain page</main>'
+    const shadow = document.querySelector('shopify-liquid-devtools')?.shadowRoot
+    await vi.waitFor(() => expect(shadow?.querySelector('#tree .tree-empty')?.textContent).toContain('No Liquid sections found'))
     expect(shadow?.querySelectorAll('#tree button')).toHaveLength(0)
   })
 })

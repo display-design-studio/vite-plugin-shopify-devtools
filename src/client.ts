@@ -84,7 +84,12 @@ export class ShopifyDevtools extends HTMLElement {
     this.#shadow.querySelector('#panel-inspect')?.setAttribute('aria-pressed', String(force))
     this.#tree = this.#controller.tree
     const list = this.#shadow.querySelector('#tree')
-    if (list) list.replaceChildren(...(this.#tree.length ? this.#tree.map((node) => this.renderNode(node)) : [this.renderEmptyTree()]))
+    if (list) {
+      const items = this.#tree.map((node) => this.renderNode(node))
+      if (!items.length) items.push(this.renderNote('No Liquid sections found on this page.'))
+      else if (this.#controller.mode === 'sections') items.push(this.renderNote('Sections only. Blocks and snippets need the full mode: see "Full mode" in the README.'))
+      list.replaceChildren(...items)
+    }
     if (this.#controller.selected) this.showSelection(this.#controller.selected)
     if (this.#controller.error && this.#controller.error !== this.#shownError) {
       this.#shownError = this.#controller.error
@@ -92,9 +97,9 @@ export class ShopifyDevtools extends HTMLElement {
     }
   }
 
-  renderEmptyTree(): HTMLLIElement {
+  renderNote(text: string): HTMLLIElement {
     const item = document.createElement('li'); item.className = 'tree-empty'
-    item.textContent = 'No Liquid components found. Start the theme with "shopify-devtools dev" instead of "shopify theme dev": it serves an instrumented copy of the theme.'
+    item.textContent = text
     return item
   }
 

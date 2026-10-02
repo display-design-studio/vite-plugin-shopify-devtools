@@ -1,8 +1,9 @@
 import type { DockClientScriptContext } from '@vitejs/devtools-kit/client'
 import type { ComponentSource } from './protocol.js'
+import type { ResolvedSection } from './sections.js'
 
 export interface ComponentNode extends ComponentSource {
-  start: Comment
+  start: Comment | null
   end: Comment | null
   roots: Element[]
   parent: ComponentNode | null
@@ -12,7 +13,7 @@ export interface ComponentNode extends ComponentSource {
 }
 
 export interface RpcCaller {
-  call(name: string, input: { file: string; line: number }): Promise<unknown>
+  call(name: string, input: unknown): Promise<unknown>
 }
 
 const decode = (value: string): ComponentSource => JSON.parse(atob(value))
@@ -35,8 +36,8 @@ function nextElement(comment: Comment): Element | null {
   return node as Element | null
 }
 
-function fallbackRoot(node: ComponentNode): Element[] {
-  const first = nextElement(node.start)
+function fallbackRoot(node: ComponentNode, start: Comment): Element[] {
+  const first = nextElement(start)
   if (!first) return node.parent?.roots ?? []
   if (node.kind === 'section') {
     const wrapper = first.closest('[id^="shopify-section-"]')
@@ -69,10 +70,11 @@ export function componentTree(root: ParentNode = document): ComponentNode[] {
       } catch { /* Ignore malformed comments from unrelated sources. */ }
     } else if (/^shopify-devtools:end:/.test(value)) {
       const node = stack.pop()
-      if (!node) continue
+      const start = node?.start
+      if (!node || !start) continue
       node.end = comment
-      node.roots = elementsInBoundary(node.start, comment)
-      if (!node.roots.length) node.roots = fallbackRoot(node)
+      node.roots = elementsInBoundary(start, comment)
+      if (!node.roots.length) node.roots = fallbackRoot(node, start)
       const identityRoot = node.kind === 'section'
         ? node.roots[0]?.closest('[id^="shopify-section-"]')
         : node.kind === 'block' ? node.roots[0]?.closest('[data-shopify-editor-block]') : node.roots[0]
@@ -81,6 +83,25 @@ export function componentTree(root: ParentNode = document): ComponentNode[] {
   }
   for (const { node } of flatten(roots)) if (!node.roots.length && node.parent) node.roots = node.parent.roots
   return roots
+}
+
+type SectionLookup = Record<string, ResolvedSection>
+
+/** Shopify wraps every section in `#shopify-section-*`; this is all a page without markers exposes. */
+export function sectionWrappers(root: ParentNode = document): HTMLElement[] {
+  return [...root.querySelectorAll<HTMLElement>('[id^="shopify-section-"]')]
+}
+
+export function sectionTree(wrappers: HTMLElement[], resolved: SectionLookup): ComponentNode[] {
+  const occurrences = new Map<string, number>()
+  return wrappers.flatMap((wrapper): ComponentNode[] => {
+    const source = resolved[wrapper.id]
+    if (!source) return []
+    const id = `section:${source.file}`
+    const occurrence = occurrences.get(id) ?? 0
+    occurrences.set(id, occurrence + 1)
+    return [{ id, kind: 'section', file: source.file, line: source.line, start: null, end: null, roots: [wrapper], parent: null, children: [], occurrence, shopifyId: wrapper.id }]
+  })
 }
 
 export function flatten(nodes: ComponentNode[], depth = 0): Array<{ node: ComponentNode; depth: number }> {
@@ -129,6 +150,9 @@ export class InspectorController {
   selected?: ComponentNode
   error?: Error
   rpc?: RpcCaller
+  mode: 'markers' | 'sections' | 'none' = 'none'
+  #sectionRun = 0
+  #sectionCache = new Map<string, ResolvedSection | undefined>()
   #overlay = document.createElement('div')
   #listeners = new Set<Listener>()
   #highlighted?: ComponentNode
@@ -144,7 +168,40 @@ export class InspectorController {
   setRpc(rpc: unknown): void { this.rpc = rpc as RpcCaller }
   setNavigationGuard(isBlocked: () => boolean): void { this.#isBlocked = isBlocked }
   subscribe(listener: Listener): () => void { this.#listeners.add(listener); listener(this); return () => this.#listeners.delete(listener) }
-  refresh(): void { this.tree = componentTree(); this.#emit() }
+  refresh(): void {
+    const tree = componentTree()
+    if (tree.length) { this.#show(tree, 'markers'); return }
+    void this.#refreshSections()
+  }
+
+  #show(tree: ComponentNode[], mode: InspectorController['mode']): void {
+    this.tree = tree
+    this.mode = mode
+    this.#emit()
+  }
+
+  // Without markers (a plain `shopify theme dev`), fall back to the sections Shopify wraps in the page.
+  async #refreshSections(): Promise<void> {
+    const wrappers = sectionWrappers()
+    const run = ++this.#sectionRun
+    if (!this.rpc || !wrappers.length) { this.#show([], 'none'); return }
+    const missing = wrappers.map((wrapper) => wrapper.id).filter((id) => !this.#sectionCache.has(id))
+    if (missing.length) {
+      try {
+        const page = (globalThis as { ShopifyAnalytics?: { meta?: { page?: { pageType?: unknown } } } }).ShopifyAnalytics?.meta?.page
+        const found = await this.rpc.call('shopify-devtools:resolve-sections', { ids: [...new Set(missing)], pageType: page?.pageType }) as SectionLookup
+        for (const id of missing) this.#sectionCache.set(id, found?.[id])
+      } catch (error) {
+        this.error = error instanceof Error ? error : new Error('Could not resolve sections')
+        this.#emit()
+        return
+      }
+    }
+    if (run !== this.#sectionRun) return
+    const resolved = Object.fromEntries(wrappers.flatMap((wrapper) => { const source = this.#sectionCache.get(wrapper.id); return source ? [[wrapper.id, source]] : [] }))
+    const tree = sectionTree(wrappers, resolved)
+    this.#show(tree, tree.length ? 'sections' : 'none')
+  }
 
   activate(): void {
     if (this.active) return

@@ -6,6 +6,7 @@ import { access, realpath } from 'node:fs/promises'
 import path from 'node:path'
 import { defaultAllowedOrigins, loadEnv, version as viteVersion, type Plugin } from 'vite'
 import { INSPECT_ICON } from './inspect-icon.js'
+import { resolveSections } from './sections.js'
 
 const CLIENT_ID = '\0virtual:shopify-devtools/client'
 const RENDERER_PUBLIC_ID = 'virtual:shopify-devtools/renderer'
@@ -67,8 +68,10 @@ export function viteVersionWarning(version: string): string | undefined {
 
 export function devtoolsConfigWarning(devtools: unknown): string | undefined {
   const expected = 'Add `devtools: shopifyDevtoolsConfig` to your Vite config (import it from @display-studio/vite-plugin-shopify-devtools).'
-  if (!devtools) return `Vite DevTools is disabled, so Shopify Liquid DevTools will not appear. ${expected}`
-  const resolved = devtools as { builtinDevTools?: boolean, branding?: { logo?: unknown } }
+  // Vite resolves the option to `{ enabled, apply, config }`; the preset itself sits under `config`.
+  const wrapper = devtools as { enabled?: boolean, config?: object } | undefined
+  if (!devtools || wrapper?.enabled === false) return `Vite DevTools is disabled, so Shopify Liquid DevTools will not appear. ${expected}`
+  const resolved = (wrapper?.config ?? devtools) as { builtinDevTools?: boolean, branding?: { logo?: unknown } }
   if (resolved.builtinDevTools !== false || !sameValue(resolved.branding?.logo, shopifyDevtoolsBranding.logo)) {
     return `Vite DevTools needs inline branding and \`builtinDevTools: false\` on Shopify-hosted pages, otherwise icons request root-relative URLs from the Shopify origin. ${expected}`
   }
@@ -243,6 +246,13 @@ export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): P
               const file = await launchEditor(resolveThemeRoot(context.viteConfig), input.file, input.line, options.editor)
               return { ok: true as const, file, line: input.line }
             },
+          }),
+        }) as never)
+        context.rpc.register(defineRpcFunction({
+          name: 'shopify-devtools:resolve-sections',
+          type: 'action',
+          setup: () => ({
+            handler: (input: { ids: unknown; pageType?: unknown }) => resolveSections(resolveThemeRoot(context.viteConfig), input?.ids, input?.pageType),
           }),
         }) as never)
       },
