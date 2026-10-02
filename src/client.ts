@@ -84,12 +84,18 @@ export class ShopifyDevtools extends HTMLElement {
     this.#shadow.querySelector('#panel-inspect')?.setAttribute('aria-pressed', String(force))
     this.#tree = this.#controller.tree
     const list = this.#shadow.querySelector('#tree')
-    if (list) list.replaceChildren(...this.#tree.map((node) => this.renderNode(node)))
+    if (list) list.replaceChildren(...(this.#tree.length ? this.#tree.map((node) => this.renderNode(node)) : [this.renderEmptyTree()]))
     if (this.#controller.selected) this.showSelection(this.#controller.selected)
     if (this.#controller.error && this.#controller.error !== this.#shownError) {
       this.#shownError = this.#controller.error
       this.toast(this.#controller.error.message, 'error')
     }
+  }
+
+  renderEmptyTree(): HTMLLIElement {
+    const item = document.createElement('li'); item.className = 'tree-empty'
+    item.textContent = 'No Liquid components found. Start the theme with "shopify-devtools dev" instead of "shopify theme dev": it serves an instrumented copy of the theme.'
+    return item
   }
 
   renderNode(node: ComponentNode): HTMLLIElement {
@@ -201,7 +207,7 @@ ol{list-style:none;padding:0;margin:0}ol ol{padding-left:14px}
 .tree-item{width:100%;display:flex;gap:8px;align-items:center;color:var(--text);background:transparent;border:0;border-radius:8px;padding:6px 7px;text-align:left;cursor:pointer;transition:background .15s var(--ease)}.tree-item:hover{background:var(--raised)}.tree-item.selected{background:var(--selected);box-shadow:inset 2px 0 0 var(--accent)}
 .tree-item>span:not(.kind){min-width:0;display:flex;flex-direction:column}.tree-item b{font-size:13px;font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tree-item small,.detail-heading small{font-size:12px;line-height:16px;color:var(--muted);text-transform:capitalize}
 .kind{width:22px;height:22px;flex:none;display:grid;place-items:center;border-radius:4px;font-size:12px;font-weight:650;background:var(--raised);color:var(--muted)}.kind.section{background:var(--section-bg);color:var(--section-text)}.kind.block{background:var(--block-bg);color:var(--block-text)}.kind.snippet{background:var(--snippet-bg);color:var(--snippet-text)}
-main{min-width:0;overflow:auto;padding:16px}.empty{height:100%;display:grid;place-content:center;gap:4px;text-align:center;color:var(--muted)}.empty strong{color:var(--text);font-weight:550}
+main{min-width:0;overflow:auto;padding:16px}.tree-empty{list-style:none;padding:8px 7px;color:var(--muted);font-size:12px;line-height:1.45}.empty{height:100%;display:grid;place-content:center;gap:4px;text-align:center;color:var(--muted)}.empty strong{color:var(--text);font-weight:550}
 .card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px}
 .detail-heading{display:flex;align-items:center;gap:10px;padding-bottom:12px;border-bottom:1px solid var(--border)}.detail-heading>div{display:flex;flex-direction:column}.detail-heading strong{font-weight:650}
 dl{display:grid;grid-template-columns:90px minmax(0,1fr);gap:8px 14px;margin:14px 0}dt{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere;font-family:ui-monospace,SFMono-Regular,'SF Mono',Consolas,'Liberation Mono',Menlo,monospace;font-size:13px}

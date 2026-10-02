@@ -166,3 +166,12 @@ describe('theme', () => {
     vi.unstubAllGlobals()
   })
 })
+
+describe('empty page', () => {
+  it('explains how to start the instrumented theme when no component is found', async () => {
+    document.body.innerHTML = '<main>Plain Shopify page</main>'
+    const shadow = document.querySelector('shopify-liquid-devtools')?.shadowRoot
+    await vi.waitFor(() => expect(shadow?.querySelector('#tree .tree-empty')?.textContent).toContain('shopify-devtools dev'))
+    expect(shadow?.querySelectorAll('#tree button')).toHaveLength(0)
+  })
+})
