@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { access, realpath } from 'node:fs/promises'
 import path from 'node:path'
-import { defaultAllowedOrigins, loadEnv, type Plugin } from 'vite'
+import { defaultAllowedOrigins, loadEnv, version as viteVersion, type Plugin } from 'vite'
 import { INSPECT_ICON } from './inspect-icon.js'
 
 const CLIENT_ID = '\0virtual:shopify-devtools/client'
@@ -53,11 +53,23 @@ export const shopifyDevtoolsConfig = {
   branding: shopifyDevtoolsBranding,
 } as const
 
+// Vite deep-clones the `devtools` option, so object identity cannot be compared.
+const sameValue = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b)
+
+const MIN_VITE = { major: 8, minor: 3 }
+
+/** Vite only reads the `devtools` option from 8.3; older versions ignore it and never serve `/__devtools/`. */
+export function viteVersionWarning(version: string): string | undefined {
+  const [major = 0, minor = 0] = version.split('.').map((part) => Number.parseInt(part, 10) || 0)
+  if (major > MIN_VITE.major || (major === MIN_VITE.major && minor >= MIN_VITE.minor)) return
+  return `Shopify Liquid DevTools requires Vite ${MIN_VITE.major}.${MIN_VITE.minor} or newer, but Vite ${version} is installed. This Vite version ignores the \`devtools\` option, so the DevTools connection returns 404. Upgrade \`vite\` in your project.`
+}
+
 export function devtoolsConfigWarning(devtools: unknown): string | undefined {
   const expected = 'Add `devtools: shopifyDevtoolsConfig` to your Vite config (import it from @display-studio/vite-plugin-shopify-devtools).'
   if (!devtools) return `Vite DevTools is disabled, so Shopify Liquid DevTools will not appear. ${expected}`
   const resolved = devtools as { builtinDevTools?: boolean, branding?: { logo?: unknown } }
-  if (resolved.builtinDevTools !== false || resolved.branding?.logo !== shopifyDevtoolsBranding.logo) {
+  if (resolved.builtinDevTools !== false || !sameValue(resolved.branding?.logo, shopifyDevtoolsBranding.logo)) {
     return `Vite DevTools needs inline branding and \`builtinDevTools: false\` on Shopify-hosted pages, otherwise icons request root-relative URLs from the Shopify origin. ${expected}`
   }
 }
@@ -236,7 +248,7 @@ export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): P
       },
     },
     configureServer(server) {
-      const warning = devtoolsConfigWarning((server.config as { devtools?: unknown }).devtools)
+      const warning = viteVersionWarning(viteVersion) ?? devtoolsConfigWarning((server.config as { devtools?: unknown }).devtools)
       if (warning) server.config.logger.warn(`[shopify-devtools] ${warning}`)
     },
     configResolved(config) {
@@ -249,7 +261,7 @@ export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): P
       if (id === ACTION_PUBLIC_ID || id === ACTION_ID) return ACTION_ID
     },
     load(id) {
-      if (id === CLIENT_ID) return `const origin=new URL(import.meta.url).origin;const connectionUrl=origin+'/__devtools/__connection.json';const connectionResponse=await fetch(connectionUrl);if(!connectionResponse.ok)throw new Error('Unable to load Vite DevTools connection metadata ('+connectionResponse.status+')');const connectionMeta=await connectionResponse.json();globalThis.__DEVFRAME_CONNECTION__={connectionMeta,metaBaseUrl:connectionResponse.url||connectionUrl,authToken:connectionMeta.authToken};const devtoolsClient=origin+'/__devtools/embedded.js';await import(/* @vite-ignore */devtoolsClient);${MINIMIZED_SIZE_SCRIPT}`
+      if (id === CLIENT_ID) return `const origin=new URL(import.meta.url).origin;const connectionUrl=origin+'/__devtools/__connection.json';const connectionResponse=await fetch(connectionUrl);if(!connectionResponse.ok)throw new Error('Unable to load Vite DevTools connection metadata ('+connectionResponse.status+') from '+connectionUrl+'. Check that Vite 8.3 or newer is installed and that devtools: shopifyDevtoolsConfig is set in your Vite config.');const connectionMeta=await connectionResponse.json();globalThis.__DEVFRAME_CONNECTION__={connectionMeta,metaBaseUrl:connectionResponse.url||connectionUrl,authToken:connectionMeta.authToken};const devtoolsClient=origin+'/__devtools/embedded.js';await import(/* @vite-ignore */devtoolsClient);${MINIMIZED_SIZE_SCRIPT}`
       if (id === RENDERER_ID) return `export { default } from ${JSON.stringify(new URL('./client.js', import.meta.url).href)};`
       if (id === ACTION_ID) return `export { default } from ${JSON.stringify(new URL('./action.js', import.meta.url).href)};`
     },

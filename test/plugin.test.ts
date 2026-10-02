@@ -1,6 +1,6 @@
 import { realpath } from 'node:fs/promises'
 import { describe, expect, it, vi } from 'vitest'
-import shopifyDevtools, { devtoolsConfigWarning, resolveEntrypoints, resolveThemeRoot, shopifyDevtoolsBranding, shopifyDevtoolsConfig } from '../src/index.js'
+import shopifyDevtools, { devtoolsConfigWarning, resolveEntrypoints, resolveThemeRoot, shopifyDevtoolsBranding, shopifyDevtoolsConfig, viteVersionWarning } from '../src/index.js'
 import { INSPECT_ICON } from '../src/inspect-icon.js'
 
 describe('Vite plugin', () => {
@@ -53,6 +53,18 @@ describe('Vite plugin', () => {
     expect(devtoolsConfigWarning(false)).toContain('shopifyDevtoolsConfig')
     expect(devtoolsConfigWarning({ builtinDevTools: true, branding: shopifyDevtoolsBranding })).toContain('builtinDevTools: false')
     expect(devtoolsConfigWarning({ ...shopifyDevtoolsConfig })).toBeUndefined()
+  })
+
+  it('accepts the preset after Vite deep-clones it', () => {
+    expect(devtoolsConfigWarning(structuredClone(shopifyDevtoolsConfig))).toBeUndefined()
+  })
+
+  it('warns when the installed Vite does not support the devtools option', () => {
+    expect(viteVersionWarning('7.1.7')).toContain('requires Vite 8.3')
+    expect(viteVersionWarning('8.2.9')).toContain('Vite 8.2.9 is installed')
+    expect(viteVersionWarning('8.3.0')).toBeUndefined()
+    expect(viteVersionWarning('8.3.2')).toBeUndefined()
+    expect(viteVersionWarning('9.0.0')).toBeUndefined()
   })
 
   it('derives the theme root from the vite-plugin-shopify outDir', () => {
