@@ -41,7 +41,20 @@ Open **Shopify Liquid** from the Vite DevTools dock. Use **Inspect page** in the
 
 The Vite plugin registers a native `custom-render` panel through `devtools.setup`, so the component tree and inspector live inside Vite's shared dock rather than a separate imitation toolbar. The CLI copies only Shopify theme directories to an OS temporary directory, instruments Liquid there with `@shopify/liquid-html-parser`, keeps the copy synchronized, and deletes it on shutdown. Static `{% render 'snippet' %}` calls in safe HTML contexts receive comment boundaries. Dynamic or unsafe renders fall back to their enclosing component. Sections and theme-block files get root boundaries; Shopify wrapper IDs and `block.shopify_attributes` provide runtime identity.
 
-Open in editor uses the authenticated Vite DevTools RPC connection. The server resolves real paths and refuses files outside the theme root before launching the editor. Editor selection follows `editor` in the plugin options, then `SHOPIFY_DEVTOOLS_EDITOR`, then `EDITOR`. On macOS, when none of those are set, the plugin auto-detects Zed, Cursor, or Visual Studio Code (in that order). For example, use `editor: 'zed'` to select Zed explicitly. The cross-origin DevTools bootstrap is allowed automatically for the Shopify CLI preview (`127.0.0.1:9292`, `localhost:9292`), `*.myshopify.com`, and the store from `SHOPIFY_STORE_DOMAIN`, `SHOPIFY_FLAG_STORE`, or `shopify.theme.toml`. Only custom domains or tunnels need `allowedOrigins`.
+Open in editor uses the authenticated Vite DevTools RPC connection. The server resolves real paths and refuses files outside the theme root before launching the editor. See [Choosing an editor](#choosing-an-editor) for how the editor is selected. The cross-origin DevTools bootstrap is allowed automatically for the Shopify CLI preview (`127.0.0.1:9292`, `localhost:9292`), `*.myshopify.com`, and the store from `SHOPIFY_STORE_DOMAIN`, `SHOPIFY_FLAG_STORE`, or `shopify.theme.toml`. Only custom domains or tunnels need `allowedOrigins`.
+
+### Choosing an editor
+
+The editor is picked in this order:
+
+1. the `editor` plugin option, e.g. `editor: 'atom'`
+2. the `SHOPIFY_DEVTOOLS_EDITOR` environment variable, e.g. `SHOPIFY_DEVTOOLS_EDITOR=subl`
+3. the `EDITOR` environment variable, e.g. `EDITOR=code`
+4. on macOS only: auto-detection of Zed, Cursor, or Visual Studio Code (in that order)
+
+Set one of the first three if you use a different editor, have several installed, or are not on macOS (there is no auto-detection on Linux or Windows). Files open at the component's line in any editor supported by [`launch-editor`](https://github.com/yyx990803/launch-editor), including Atom, Sublime Text, VS Code, WebStorm, Vim, and Emacs.
+
+Terminal editors (`vim`, `emacs`, `nano`) run inside the terminal where Vite is running and take it over until you quit. Prefer a GUI editor or a windowed variant such as `gvim` or `mvim`.
 
 ## Scope
 
