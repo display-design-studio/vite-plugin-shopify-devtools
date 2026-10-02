@@ -54,7 +54,7 @@ export const shopifyDevtoolsConfig = {
 } as const
 
 export function devtoolsConfigWarning(devtools: unknown): string | undefined {
-  const expected = 'Add `devtools: shopifyDevtoolsConfig` to your Vite config (import it from vite-plugin-shopify-devtools).'
+  const expected = 'Add `devtools: shopifyDevtoolsConfig` to your Vite config (import it from @display-studio/vite-plugin-shopify-devtools).'
   if (!devtools) return `Vite DevTools is disabled, so Shopify Liquid DevTools will not appear. ${expected}`
   const resolved = devtools as { builtinDevTools?: boolean, branding?: { logo?: unknown } }
   if (resolved.builtinDevTools !== false || resolved.branding?.logo !== shopifyDevtoolsBranding.logo) {

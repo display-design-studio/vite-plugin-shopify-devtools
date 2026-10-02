@@ -1,11 +1,11 @@
-# vite-plugin-shopify-devtools
+# @display-studio/vite-plugin-shopify-devtools
 
 Development-only source inspection for Shopify Liquid themes, integrated into the official Vite DevTools dock. Hover or click rendered theme components, inspect their Liquid/DOM hierarchy, and open the defining section, theme block, or static snippet in your editor.
 
 ## Setup
 
 ```sh
-npm install -D vite-plugin-shopify-devtools
+npm install -D @display-studio/vite-plugin-shopify-devtools
 ```
 
 Vite 8.3 or newer is required. The plugin enables Vite DevTools for `vite serve` and injects its embedded client through the configured JavaScript entry because Shopify, rather than Vite, serves the theme HTML.
@@ -14,7 +14,7 @@ Vite 8.3 or newer is required. The plugin enables Vite DevTools for `vite serve`
 // vite.config.ts
 import { defineConfig } from 'vite'
 import shopify from 'vite-plugin-shopify'
-import shopifyDevtools, { shopifyDevtoolsConfig } from 'vite-plugin-shopify-devtools'
+import shopifyDevtools, { shopifyDevtoolsConfig } from '@display-studio/vite-plugin-shopify-devtools'
 
 export default defineConfig({
   devtools: shopifyDevtoolsConfig,
@@ -58,7 +58,7 @@ Terminal editors (`vim`, `emacs`, `nano`) run inside the terminal where Vite is 
 
 ## Scope
 
-This MVP intentionally excludes Theme Editor iframe integration, Liquid profiling, cart debugging, variable serialization, and npm publication. A marker opens the component definition/root line, not the exact line of every internal HTML element.
+This MVP intentionally excludes Theme Editor iframe integration, Liquid profiling, cart debugging, and variable serialization. A marker opens the component definition/root line, not the exact line of every internal HTML element.
 
 The dock button, logo, and favicon use the full-color Shopify bag (`assets/shopify/shopify-glyph.svg`) on both themes. The black and white glyph variants stay in `assets/shopify/` for monochrome treatments.
 

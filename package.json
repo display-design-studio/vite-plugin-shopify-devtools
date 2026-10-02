@@ -1,9 +1,26 @@
 {
-  "name": "vite-plugin-shopify-devtools",
+  "name": "@display-studio/vite-plugin-shopify-devtools",
   "version": "0.1.0",
   "description": "Source-aware Shopify theme devtools for Vite",
   "type": "module",
   "license": "MIT",
+  "author": "Display Design Studio",
+  "homepage": "https://github.com/display-design-studio/vite-plugin-shopify-devtools#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/display-design-studio/vite-plugin-shopify-devtools.git"
+  },
+  "bugs": {
+    "url": "https://github.com/display-design-studio/vite-plugin-shopify-devtools/issues"
+  },
+  "keywords": [
+    "shopify",
+    "vite",
+    "vite-plugin",
+    "devtools",
+    "liquid",
+    "theme"
+  ],
   "bin": {
     "shopify-devtools": "dist/cli.js"
   },
@@ -21,15 +38,21 @@
       "import": "./dist/action.js"
     }
   },
-  "files": ["dist", "assets", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "assets",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsup src/index.ts src/cli.ts src/client.ts src/action.ts --format esm --dts --clean",
-    "playground:sync": "rsync -a --delete dist assets playground/skeleton-theme/node_modules/vite-plugin-shopify-devtools/",
+    "playground:sync": "rsync -a --delete dist assets playground/skeleton-theme/node_modules/@display-studio/vite-plugin-shopify-devtools/",
     "playground": "bun run build && bun run playground:sync && bun run --cwd playground/skeleton-theme dev",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src test vite.config.ts",
     "test": "vitest run",
-    "test:browser": "vitest run test/client.test.ts"
+    "test:browser": "vitest run test/client.test.ts",
+    "prepublishOnly": "bun run typecheck && bun run lint && bun run test && bun run build"
   },
   "peerDependencies": {
     "vite": "^8.3.0"
@@ -54,5 +77,8 @@
   },
   "engines": {
     "node": ">=20.19"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
