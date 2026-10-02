@@ -1,7 +1,7 @@
 import { fileURLToPath, URL } from 'node:url';
 import { defaultAllowedOrigins, defineConfig, loadEnv } from 'vite';
 import shopify from 'vite-plugin-shopify';
-import shopifyDevtools, { shopifyDevtoolsConfig } from 'vite-plugin-shopify-devtools';
+import shopifyDevtools, { shopifyDevtoolsConfig } from '@display-studio/vite-plugin-shopify-devtools';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');

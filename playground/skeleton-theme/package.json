@@ -4,7 +4,7 @@
     "typescript": "^7.0.2",
     "vite": "^8.3.1",
     "vite-plugin-shopify": "^5.0.0",
-    "vite-plugin-shopify-devtools": "file:../.."
+    "@display-studio/vite-plugin-shopify-devtools": "file:../.."
   },
   "type": "module",
   "scripts": {
