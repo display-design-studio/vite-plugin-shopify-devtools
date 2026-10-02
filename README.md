@@ -11,7 +11,7 @@ Development-only source inspection for Shopify Liquid themes, integrated into th
 npm install -D @display-studio/vite-plugin-shopify-devtools
 ```
 
-Vite 8.3 or newer is required. The plugin enables Vite DevTools for `vite serve` and injects its embedded client through the configured JavaScript entry because Shopify, rather than Vite, serves the theme HTML.
+Vite 8.3 or newer is required, and it must be a direct dependency of your project (`npm install -D vite@^8.3`). Older Vite versions ignore the `devtools` option, so the browser console shows `Unable to load Vite DevTools connection metadata (404)`. Check your Vite version if you see it. The plugin enables Vite DevTools for `vite serve` and injects its embedded client through the configured JavaScript entry because Shopify, rather than Vite, serves the theme HTML.
 
 ```ts
 // vite.config.ts
