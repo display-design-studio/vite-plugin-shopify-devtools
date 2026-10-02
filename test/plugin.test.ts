@@ -140,7 +140,7 @@ describe('Vite plugin', () => {
       rpc: { register: (value: typeof definition) => { if (value?.name === 'shopify-devtools:resolve-sections') definition = value } },
       viteConfig: { root, build: { outDir: 'assets' } },
     } as never)
-    expect(await definition?.setup().handler({ ids: ['shopify-section-feed-artists'] })).toEqual({ 'shopify-section-feed-artists': { file: 'sections/feed-artists.liquid', line: 1, kind: 'section' } })
+    expect(await definition?.setup().handler({ ids: ['shopify-section-feed-artists'] })).toMatchObject({ 'shopify-section-feed-artists': { file: 'sections/feed-artists.liquid', line: 1, kind: 'section' } })
   })
 
   it('opens a validated file through the configured plugin launcher', async () => {

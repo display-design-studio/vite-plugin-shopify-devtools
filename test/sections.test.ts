@@ -31,7 +31,7 @@ describe('resolveSections', () => {
       'shopify-section-template--123__hero',
       'shopify-section-sections--456__header',
     ])
-    expect(result['shopify-section-feed-artists']).toEqual({ file: 'sections/feed-artists.liquid', line: 1, kind: 'section' })
+    expect(result['shopify-section-feed-artists']).toMatchObject({ file: 'sections/feed-artists.liquid', line: 1, kind: 'section' })
     expect(result['shopify-section-template--123__hero']?.file).toBe('sections/hero.liquid')
     expect(result['shopify-section-sections--456__header']?.file).toBe('sections/header.liquid')
   })

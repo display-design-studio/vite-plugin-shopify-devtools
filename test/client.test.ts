@@ -175,7 +175,7 @@ describe('pages without markers', () => {
       : { ok: true, input })
     document.body.innerHTML = '<div id="shopify-section-template--1__hero" class="shopify-section">Hero</div><div id="shopify-section-unknown">Other</div>'
     const shadow = document.querySelector('shopify-liquid-devtools')?.shadowRoot
-    await vi.waitFor(() => expect(shadow?.querySelector('#tree .tree-empty')?.textContent ?? '').toContain('Sections only'))
+    await vi.waitFor(() => expect(shadow?.querySelector('#tree .tree-empty')?.textContent ?? '').toContain('inferred from your theme source'))
     expect(shadow?.querySelectorAll('#tree button')).toHaveLength(1)
     expect(shadow?.querySelector('#tree')?.textContent).toContain('hero.liquid')
     expect(rpcCall).toHaveBeenCalledWith('shopify-devtools:resolve-sections', expect.objectContaining({ ids: expect.arrayContaining(['shopify-section-template--1__hero']) }))

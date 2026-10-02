@@ -1,5 +1,6 @@
 import type { DockClientScriptContext } from '@vitejs/devtools-kit/client'
 import type { ComponentSource } from './protocol.js'
+import { compareTrees, inferNodes, type InferenceReport } from './infer.js'
 import type { ResolvedSection } from './sections.js'
 
 export interface ComponentNode extends ComponentSource {
@@ -10,6 +11,9 @@ export interface ComponentNode extends ComponentSource {
   children: ComponentNode[]
   occurrence: number
   shopifyId?: string
+  /** Guessed from the theme source instead of read from markers. */
+  inferred?: boolean
+  label?: string
 }
 
 export interface RpcCaller {
@@ -94,13 +98,18 @@ export function sectionWrappers(root: ParentNode = document): HTMLElement[] {
 
 export function sectionTree(wrappers: HTMLElement[], resolved: SectionLookup): ComponentNode[] {
   const occurrences = new Map<string, number>()
+  const occurrence = (id: string): number => {
+    const next = occurrences.get(id) ?? 0
+    occurrences.set(id, next + 1)
+    return next
+  }
   return wrappers.flatMap((wrapper): ComponentNode[] => {
     const source = resolved[wrapper.id]
     if (!source) return []
     const id = `section:${source.file}`
-    const occurrence = occurrences.get(id) ?? 0
-    occurrences.set(id, occurrence + 1)
-    return [{ id, kind: 'section', file: source.file, line: source.line, start: null, end: null, roots: [wrapper], parent: null, children: [], occurrence, shopifyId: wrapper.id }]
+    const node: ComponentNode = { id, kind: 'section', file: source.file, line: source.line, start: null, end: null, roots: [wrapper], parent: null, children: [], occurrence: occurrence(id), shopifyId: wrapper.id }
+    node.children = inferNodes(wrapper, source.tree ?? [], { occurrence }, node)
+    return [node]
   })
 }
 
@@ -150,7 +159,7 @@ export class InspectorController {
   selected?: ComponentNode
   error?: Error
   rpc?: RpcCaller
-  mode: 'markers' | 'sections' | 'none' = 'none'
+  mode: 'markers' | 'inferred' | 'none' = 'none'
   #sectionRun = 0
   #sectionCache = new Map<string, ResolvedSection | undefined>()
   #overlay = document.createElement('div')
@@ -180,27 +189,45 @@ export class InspectorController {
     this.#emit()
   }
 
-  // Without markers (a plain `shopify theme dev`), fall back to the sections Shopify wraps in the page.
+  /** Asks the server for the files behind the sections on the page, remembering what it already told us. */
+  async #resolveSections(wrappers: HTMLElement[]): Promise<SectionLookup> {
+    const missing = wrappers.map((wrapper) => wrapper.id).filter((id) => !this.#sectionCache.has(id))
+    if (missing.length && this.rpc) {
+      const page = (globalThis as { ShopifyAnalytics?: { meta?: { page?: { pageType?: unknown } } } }).ShopifyAnalytics?.meta?.page
+      const found = await this.rpc.call('shopify-devtools:resolve-sections', { ids: [...new Set(missing)], pageType: page?.pageType }) as SectionLookup
+      for (const id of missing) this.#sectionCache.set(id, found?.[id])
+    }
+    return Object.fromEntries(wrappers.flatMap((wrapper) => { const source = this.#sectionCache.get(wrapper.id); return source ? [[wrapper.id, source]] : [] }))
+  }
+
+  // Without markers (a plain `shopify theme dev`), fall back to the sections Shopify wraps in the page
+  // and guess the blocks and snippets inside them from the theme source.
   async #refreshSections(): Promise<void> {
     const wrappers = sectionWrappers()
     const run = ++this.#sectionRun
     if (!this.rpc || !wrappers.length) { this.#show([], 'none'); return }
-    const missing = wrappers.map((wrapper) => wrapper.id).filter((id) => !this.#sectionCache.has(id))
-    if (missing.length) {
-      try {
-        const page = (globalThis as { ShopifyAnalytics?: { meta?: { page?: { pageType?: unknown } } } }).ShopifyAnalytics?.meta?.page
-        const found = await this.rpc.call('shopify-devtools:resolve-sections', { ids: [...new Set(missing)], pageType: page?.pageType }) as SectionLookup
-        for (const id of missing) this.#sectionCache.set(id, found?.[id])
-      } catch (error) {
-        this.error = error instanceof Error ? error : new Error('Could not resolve sections')
-        this.#emit()
-        return
-      }
+    let resolved: SectionLookup
+    try {
+      resolved = await this.#resolveSections(wrappers)
+    } catch (error) {
+      this.error = error instanceof Error ? error : new Error('Could not resolve sections')
+      this.#emit()
+      return
     }
     if (run !== this.#sectionRun) return
-    const resolved = Object.fromEntries(wrappers.flatMap((wrapper) => { const source = this.#sectionCache.get(wrapper.id); return source ? [[wrapper.id, source]] : [] }))
     const tree = sectionTree(wrappers, resolved)
-    this.#show(tree, tree.length ? 'sections' : 'none')
+    this.#show(tree, tree.length ? 'inferred' : 'none')
+  }
+
+  /**
+   * On a page with markers (full mode), scores what the inference would have shown against the exact tree.
+   * Call it from the console: `shopifyDevtools.compareInference()`.
+   */
+  async compareInference(): Promise<InferenceReport | undefined> {
+    const truth = componentTree()
+    if (!truth.length) return
+    const wrappers = sectionWrappers()
+    return compareTrees(truth, sectionTree(wrappers, await this.#resolveSections(wrappers)))
   }
 
   activate(): void {

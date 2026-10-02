@@ -21,6 +21,8 @@ export class ShopifyDevtools extends HTMLElement {
   #colorScheme = window.matchMedia?.('(prefers-color-scheme: dark)')
 
   connectedCallback(): void {
+    // Lets you score the inference on a page that has markers: `await shopifyDevtools.compareInference()`.
+    Object.assign(globalThis, { shopifyDevtools: { compareInference: () => this.#controller.compareInference() } })
     this.#shadow.innerHTML = `<style>${styles}</style>
       <section id="panel" aria-label="Shopify Liquid DevTools">
         <header><div class="title">${liquidIcon}<strong>Liquid DevTools</strong><span class="badge">DEV</span></div><div class="header-actions"><button id="panel-inspect" class="panel-inspect" aria-label="Inspect Liquid component" aria-pressed="false">${inspectIcon}<span>Inspect page</span></button><button id="close" class="icon" aria-label="Close DevTools">${closeIcon}</button></div></header>
@@ -87,7 +89,7 @@ export class ShopifyDevtools extends HTMLElement {
     if (list) {
       const items = this.#tree.map((node) => this.renderNode(node))
       if (!items.length) items.push(this.renderNote('No Liquid sections found on this page.'))
-      else if (this.#controller.mode === 'sections') items.push(this.renderNote('Sections only. Blocks and snippets need the full mode: see "Full mode" in the README.'))
+      else if (this.#controller.mode === 'inferred') items.unshift(this.renderNote('Blocks and snippets are inferred from your theme source and can be incomplete. Use the full mode for exact results: see "Full mode" in the README.'))
       list.replaceChildren(...items)
     }
     if (this.#controller.selected) this.showSelection(this.#controller.selected)
@@ -103,12 +105,26 @@ export class ShopifyDevtools extends HTMLElement {
     return item
   }
 
+  // Inline blocks live in their section's file, so the file name alone would repeat the section.
+  displayName(node: ComponentNode): string {
+    return node.label && node.file.startsWith('sections/') ? node.label : node.file.split('/').at(-1) ?? node.file
+  }
+
+  displayKind(node: ComponentNode): string {
+    return node.inferred && node.kind !== 'section' ? `${node.kind} · inferred` : node.kind
+  }
+
   renderNode(node: ComponentNode): HTMLLIElement {
     const item = document.createElement('li')
     const button = document.createElement('button')
     button.className = 'tree-item'
     button.dataset.key = `${node.id}:${node.occurrence}`
-    button.innerHTML = `<span class="kind ${node.kind}">${node.kind.slice(0, 1).toUpperCase()}</span><span><b>${node.file.split('/').at(-1)}</b><small>${node.kind}</small></span>`
+    const text = document.createElement('span')
+    const name = document.createElement('b'); name.textContent = this.displayName(node)
+    const kind = document.createElement('small'); kind.textContent = this.displayKind(node)
+    text.append(name, kind)
+    const initial = document.createElement('span'); initial.className = `kind ${node.kind}`; initial.textContent = node.kind.slice(0, 1).toUpperCase()
+    button.append(initial, text)
     button.addEventListener('click', () => this.select(node))
     item.append(button)
     if (node.children.length) {
@@ -132,7 +148,12 @@ export class ShopifyDevtools extends HTMLElement {
     if (!details) return
     details.replaceChildren()
     const heading = document.createElement('div'); heading.className = 'detail-heading'
-    heading.innerHTML = `<span class="kind ${node.kind}">${node.kind.slice(0, 1).toUpperCase()}</span><div><strong>${node.file.split('/').at(-1)}</strong><small>${node.kind}</small></div>`
+    const initial = document.createElement('span'); initial.className = `kind ${node.kind}`; initial.textContent = node.kind.slice(0, 1).toUpperCase()
+    const title = document.createElement('div')
+    const strong = document.createElement('strong'); strong.textContent = this.displayName(node)
+    const small = document.createElement('small'); small.textContent = this.displayKind(node)
+    title.append(strong, small)
+    heading.append(initial, title)
     const fields = document.createElement('dl')
     const dom = element ? `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ''}${[...element.classList].map((value) => `.${value}`).join('')}` : 'No DOM root'
     for (const [label, value] of [['File', node.file], ['Line', String(node.line)], ['DOM', dom], ['Shopify ID', node.shopifyId ?? '—']]) {

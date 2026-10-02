@@ -3,9 +3,9 @@ import path from 'node:path'
 import { encodeMarker, type ComponentKind, type ComponentSource } from './protocol.js'
 
 interface Position { start: number; end: number }
-interface AstNode { type?: string; name?: unknown; position?: Position; source?: string; [key: string]: unknown }
+export interface AstNode { type?: string; name?: unknown; position?: Position; source?: string; [key: string]: unknown }
 
-function lineAt(source: string, offset: number): number {
+export function lineAt(source: string, offset: number): number {
   return source.slice(0, offset).split('\n').length
 }
 
@@ -19,7 +19,7 @@ function kindFor(relativePath: string): ComponentKind | undefined {
   return undefined
 }
 
-function staticRenderName(node: AstNode, source: string): string | undefined {
+export function staticRenderName(node: AstNode, source: string): string | undefined {
   if (node.type !== 'LiquidTag' || node.name !== 'render' || !node.position) return
   const raw = source.slice(node.position.start, node.position.end)
   const match = raw.match(/\{%-?\s*render\s+(['"])([^'"{}]+)\1/)
