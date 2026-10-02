@@ -5,6 +5,8 @@
 
 Development-only source inspection for Shopify Liquid themes, integrated into the official Vite DevTools dock. Hover or click rendered theme components, inspect their Liquid/DOM hierarchy, and open the defining section, theme block, or static snippet in your editor.
 
+![Liquid DevTools panel listing the sections, blocks and snippets of a Shopify page](https://raw.githubusercontent.com/display-design-studio/vite-plugin-shopify-devtools/main/docs/devtools-panel.png)
+
 ## Setup
 
 ```sh
