@@ -88,6 +88,26 @@ Set one of the first three if you use a different editor, have several installed
 
 Terminal editors (`vim`, `emacs`, `nano`) run inside the terminal where Vite is running and take it over until you quit. Prefer a GUI editor or a windowed variant such as `gvim` or `mvim`.
 
+## Using it with Vue
+
+The plugin only inspects the Shopify side of your theme (sections, blocks, snippets); it never looks at Vue components. Vue tooling can sit next to it:
+
+- **`@vitejs/plugin-vue`** works as usual.
+- **Vue DevTools 8** (`vite-plugin-vue-devtools@8`) works. Shopify serves your HTML, so there is no `index.html` to inject into: point `appendTo` at your JavaScript entry. Its panel opens with Alt+Shift+D and its button sits next to the Shopify one.
+
+  ```ts
+  import vueDevTools from 'vite-plugin-vue-devtools'
+
+  export default defineConfig({
+    devtools: shopifyDevtoolsConfig,
+    plugins: [shopify(), vue(), vueDevTools({ appendTo: 'frontend/entrypoints/theme.ts' }), shopifyDevtools()],
+  })
+  ```
+
+- **Vue DevTools 9 (beta)** shares the Vite DevTools dock with this plugin and its entry shows up there, but its panel cannot reach the page yet. The panel is an iframe served by Vite while the page comes from Shopify, and Vue's connection between the two only accepts the same origin, so the component tree stays empty. Use version 8 for now. The plugin does rewrite root-relative iframe dock URLs to point at the Vite server, which makes other iframe-based docks work on a Shopify-hosted page.
+
+To add options of your own to the `devtools` setting, spread the preset: `devtools: { ...shopifyDevtoolsConfig, clientAuth: false }`.
+
 ## Scope
 
 This MVP intentionally excludes Theme Editor iframe integration, Liquid profiling, cart debugging, and variable serialization. A marker opens the component definition/root line, not the exact line of every internal HTML element.
