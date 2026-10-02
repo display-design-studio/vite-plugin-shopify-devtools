@@ -1,0 +1,12 @@
+{% doc %}
+  A card with a badge and a button. The class list has a dynamic part on purpose.
+
+  @param {string} title
+  @param {number} index
+{% enddoc %}
+
+<article class="demo-card demo-card--{{ index }}">
+  <h3 class="demo-card__title">{{ title }} {{ index }}</h3>
+  {% render 'demo-badge', text: 'New' %}
+  {% render 'demo-button', label: 'Open' %}
+</article>

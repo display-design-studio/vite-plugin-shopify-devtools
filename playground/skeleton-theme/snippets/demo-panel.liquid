@@ -1,0 +1,8 @@
+{% doc %}
+  Shares the demo-card class with demo-card.liquid; the extra modifier tells them apart.
+{% enddoc %}
+
+<article class="demo-card demo-card--wide">
+  <p class="demo-panel__text">A wide panel</p>
+  {% render 'demo-button', label: 'Wide' %}
+</article>

@@ -12,9 +12,69 @@
     "main": {
       "type": "hello-world",
       "settings": {}
+    },
+    "demo": {
+      "type": "inference-demo",
+      "settings": {
+        "title": "Inference demo"
+      },
+      "blocks": {
+        "feature_a": {
+          "type": "feature",
+          "settings": {
+            "text": "Fast"
+          }
+        },
+        "feature_b": {
+          "type": "feature",
+          "settings": {
+            "text": "Simple"
+          }
+        },
+        "cta_a": {
+          "type": "cta",
+          "settings": {
+            "label": "Buy now"
+          }
+        }
+      },
+      "block_order": [
+        "feature_a",
+        "feature_b",
+        "cta_a"
+      ]
+    },
+    "theme_blocks": {
+      "type": "custom-section",
+      "settings": {},
+      "blocks": {
+        "group_a": {
+          "type": "group",
+          "settings": {},
+          "blocks": {
+            "text_a": {
+              "type": "text",
+              "settings": {}
+            },
+            "text_b": {
+              "type": "text",
+              "settings": {}
+            }
+          },
+          "block_order": [
+            "text_a",
+            "text_b"
+          ]
+        }
+      },
+      "block_order": [
+        "group_a"
+      ]
     }
   },
   "order": [
-    "main"
+    "main",
+    "demo",
+    "theme_blocks"
   ]
 }

@@ -1,0 +1,72 @@
+<section class="inference-demo">
+  <h2 class="inference-demo__title">{{ section.settings.title }}</h2>
+
+  <div class="inference-demo__cards">
+    {% for index in (1..3) %}
+      {% render 'demo-card', title: 'Card', index: index %}
+    {% endfor %}
+    {% render 'demo-panel' %}
+  </div>
+
+  <ul class="inference-demo__features">
+    {% for block in section.blocks %}
+      {% case block.type %}
+        {% when 'feature' %}
+          <li class="demo-feature" {{ block.shopify_attributes }}>
+            {% render 'demo-icon' %}
+            <span>{{ block.settings.text }}</span>
+          </li>
+        {% when 'cta' %}
+          <li class="demo-cta" {{ block.shopify_attributes }}>
+            {% render 'demo-button', label: block.settings.label %}
+          </li>
+      {% endcase %}
+    {% endfor %}
+  </ul>
+
+  <p class="inference-demo__price">{% render 'demo-money', value: 1999 %}</p>
+</section>
+
+{% stylesheet %}
+  .inference-demo {
+    display: grid;
+    gap: 1.5rem;
+    padding: 2rem 0;
+  }
+  .inference-demo__cards {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  }
+  .inference-demo__features {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+{% endstylesheet %}
+
+{% schema %}
+{
+  "name": "Inference demo",
+  "tag": "div",
+  "settings": [
+    { "type": "text", "id": "title", "label": "Title", "default": "Inference demo" }
+  ],
+  "blocks": [
+    {
+      "type": "feature",
+      "name": "Feature",
+      "settings": [{ "type": "text", "id": "text", "label": "Text", "default": "Feature" }]
+    },
+    {
+      "type": "cta",
+      "name": "Call to action",
+      "settings": [{ "type": "text", "id": "label", "label": "Label", "default": "Buy now" }]
+    }
+  ],
+  "presets": [{ "name": "Inference demo" }]
+}
+{% endschema %}
