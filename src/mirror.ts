@@ -21,10 +21,11 @@ async function copyFile(themeRoot: string, shadowRoot: string, absolute: string)
 
 export async function createThemeMirror(themeRoot: string): Promise<ThemeMirror> {
   const root = await import('node:fs/promises').then(({ mkdtemp }) => mkdtemp(path.join(os.tmpdir(), 'shopify-devtools-')))
+  const watched: string[] = []
   for (const directory of THEME_DIRECTORIES) {
     const source = path.join(themeRoot, directory)
     try {
-      if ((await stat(source)).isDirectory()) await cp(source, path.join(root, directory), { recursive: true })
+      if ((await stat(source)).isDirectory()) { await cp(source, path.join(root, directory), { recursive: true }); watched.push(source) }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
@@ -40,7 +41,8 @@ export async function createThemeMirror(themeRoot: string): Promise<ThemeMirror>
   }
 
   // Polling avoids exhausting per-process file-descriptor limits on large themes and CI hosts.
-  const watcher: FSWatcher = chokidar.watch(THEME_DIRECTORIES.map((directory) => path.join(themeRoot, directory)), {
+  // Only existing directories are watched: chokidar 5 stops reporting changes when any watched path is missing.
+  const watcher: FSWatcher = chokidar.watch(watched, {
     ignoreInitial: true,
     usePolling: true,
     interval: 120,
