@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, realpath, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import shopifyDevtools, { devtoolsConfigWarning, resolveEntrypoints, resolveThemeRoot, shopifyDevtoolsBranding, shopifyDevtoolsConfig, viteVersionWarning } from '../src/index.js'
+import shopifyDevtools, { absoluteDockUrl, devtoolsConfigWarning, resolveEntrypoints, resolveThemeRoot, shopifyDevtoolsBranding, shopifyDevtoolsConfig, viteOrigin, viteVersionWarning } from '../src/index.js'
 import { INSPECT_ICON } from '../src/inspect-icon.js'
 
 describe('Vite plugin', () => {
@@ -74,6 +74,54 @@ describe('Vite plugin', () => {
     expect(viteVersionWarning('8.3.0')).toBeUndefined()
     expect(viteVersionWarning('8.3.2')).toBeUndefined()
     expect(viteVersionWarning('9.0.0')).toBeUndefined()
+  })
+
+  it('turns root-relative iframe dock urls into urls on the Vite server', () => {
+    expect(absoluteDockUrl({ id: 'vue', type: 'iframe', url: '/__devtools__/' }, 'http://localhost:5173/')).toBe('http://localhost:5173/__devtools__/')
+    expect(absoluteDockUrl({ id: 'vue', type: 'iframe', url: '/__devtools__/' }, 'https://tunnel.example')).toBe('https://tunnel.example/__devtools__/')
+    expect(absoluteDockUrl({ id: 'a', type: 'iframe', url: 'http://localhost:5173/x' }, 'http://localhost:5173')).toBeUndefined()
+    expect(absoluteDockUrl({ id: 'b', type: 'iframe', url: '//cdn.example/x' }, 'http://localhost:5173')).toBeUndefined()
+    expect(absoluteDockUrl({ id: 'c', type: 'action', url: '/x' }, 'http://localhost:5173')).toBeUndefined()
+    expect(absoluteDockUrl({ id: 'd', type: 'iframe' }, 'http://localhost:5173')).toBeUndefined()
+  })
+
+  it('prefers the configured public origin over where Vite listens', () => {
+    const resolvedUrls = { local: ['http://localhost:5173/'], network: [] }
+    expect(viteOrigin({ config: { server: {} }, resolvedUrls } as never)).toBe('http://localhost:5173/')
+    expect(viteOrigin({ config: { server: { origin: 'https://tunnel.example' } }, resolvedUrls } as never)).toBe('https://tunnel.example')
+    expect(viteOrigin({ config: { server: {} }, resolvedUrls: null } as never)).toBeUndefined()
+  })
+
+  it('fixes iframe docks other plugins registered, now and later, and leaves everything else alone', async () => {
+    const plugin = shopifyDevtools()
+    const views = new Map<string, { id: string; type: string; url?: string }>([
+      ['vue', { id: 'vue', type: 'iframe', url: '/__devtools__/' }],
+      ['abs', { id: 'abs', type: 'iframe', url: 'http://localhost:5173/own/' }],
+      ['act', { id: 'act', type: 'action' }],
+    ])
+    const update = vi.fn()
+    let onUpdated: ((entry: { id: string; type: string; url?: string }) => void) | undefined
+    await plugin.devtools?.setup?.({
+      docks: { register: vi.fn(), views, update, events: { on: (_event: string, handler: typeof onUpdated) => { onUpdated = handler } } },
+      rpc: { register: vi.fn() },
+      viteConfig: { root: process.cwd() },
+    } as never)
+    expect(update).not.toHaveBeenCalled()
+
+    let listening: (() => void) | undefined
+    ;(plugin.configureServer as (server: unknown) => void)({
+      config: { logger: { warn: vi.fn() }, server: {}, devtools: undefined },
+      resolvedUrls: { local: ['http://localhost:5173/'], network: [] },
+      httpServer: { listening: false, once: (_event: string, handler: () => void) => { listening = handler } },
+    })
+    listening?.()
+    expect(update).toHaveBeenCalledTimes(1)
+    expect(update).toHaveBeenCalledWith({ id: 'vue', type: 'iframe', url: 'http://localhost:5173/__devtools__/' })
+
+    onUpdated?.({ id: 'late', type: 'iframe', url: '/late/' })
+    expect(update).toHaveBeenLastCalledWith({ id: 'late', type: 'iframe', url: 'http://localhost:5173/late/' })
+    onUpdated?.({ id: 'vue', type: 'iframe', url: 'http://localhost:5173/__devtools__/' })
+    expect(update).toHaveBeenCalledTimes(2)
   })
 
   it('derives the theme root from the vite-plugin-shopify outDir', () => {

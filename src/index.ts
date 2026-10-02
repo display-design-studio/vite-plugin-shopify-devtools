@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { access, realpath } from 'node:fs/promises'
 import path from 'node:path'
-import { defaultAllowedOrigins, loadEnv, version as viteVersion, type Plugin } from 'vite'
+import { defaultAllowedOrigins, loadEnv, version as viteVersion, type Plugin, type ViteDevServer } from 'vite'
 import { INSPECT_ICON } from './inspect-icon.js'
 import { resolveSections } from './sections.js'
 
@@ -75,6 +75,23 @@ export function devtoolsConfigWarning(devtools: unknown): string | undefined {
   if (resolved.builtinDevTools !== false || !sameValue(resolved.branding?.logo, shopifyDevtoolsBranding.logo)) {
     return `Vite DevTools needs inline branding and \`builtinDevTools: false\` on Shopify-hosted pages, otherwise icons request root-relative URLs from the Shopify origin. ${expected}`
   }
+}
+
+type DockEntry = { id: string; type?: string; url?: unknown }
+
+/**
+ * Iframe docks from other plugins (Vue DevTools 9, for one) point at a path on the Vite server, like
+ * `/__devtools__/`. The page is served by Shopify, so the browser would request that path from Shopify.
+ */
+export function absoluteDockUrl(entry: DockEntry, origin: string): string | undefined {
+  if (entry.type !== 'iframe' || typeof entry.url !== 'string') return
+  if (!entry.url.startsWith('/') || entry.url.startsWith('//')) return
+  return `${origin.replace(/\/+$/, '')}${entry.url}`
+}
+
+/** The origin the browser reaches the Vite server on: the configured public one, else where it listens. */
+export function viteOrigin(server: Pick<ViteDevServer, 'config' | 'resolvedUrls'>): string | undefined {
+  return server.config.server.origin ?? server.resolvedUrls?.local[0]
 }
 
 export interface ShopifyDevtoolsOptions {
@@ -194,6 +211,12 @@ export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): P
   const explicitEntry = options.entry ? toPosix(options.entry) : undefined
   let entrypoints = new Set<string>()
   let serve = false
+  let docks: { views?: Map<string, unknown>; update(entry: never): void; events?: { on(event: 'docks:entry:updated', handler: (entry: DockEntry) => void): unknown } } | undefined
+  let origin: string | undefined
+  const fixDock = (entry: DockEntry): void => {
+    const url = origin ? absoluteDockUrl(entry, origin) : undefined
+    if (url) docks?.update({ ...entry, url } as never)
+  }
   return {
     name: 'vite-plugin-shopify-devtools',
     enforce: 'pre',
@@ -205,6 +228,8 @@ export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): P
     },
     devtools: {
       setup(context) {
+        docks = context.docks as unknown as typeof docks
+        docks?.events?.on('docks:entry:updated', fixDock)
         // Vite's built-in group uses an absolute /__devtools-assets URL. In a
         // Shopify-hosted document that URL targets Shopify instead of Vite.
         context.docks.register({
@@ -260,6 +285,12 @@ export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): P
     configureServer(server) {
       const warning = viteVersionWarning(viteVersion) ?? devtoolsConfigWarning((server.config as { devtools?: unknown }).devtools)
       if (warning) server.config.logger.warn(`[shopify-devtools] ${warning}`)
+      // Docks registered by other plugins may already exist, or arrive later; fix both once the origin is known.
+      const ready = (): void => {
+        origin = viteOrigin(server)
+        for (const entry of docks?.views?.values() ?? []) fixDock(entry as DockEntry)
+      }
+      if (server.httpServer?.listening) ready(); else server.httpServer?.once('listening', ready)
     },
     configResolved(config) {
       serve = config.command === 'serve'
