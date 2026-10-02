@@ -1,7 +1,8 @@
 # @display-studio/vite-plugin-shopify-devtools
 
-[![npm version](https://img.shields.io/npm/v/@display-studio/vite-plugin-shopify-devtools.svg)](https://www.npmjs.com/package/@display-studio/vite-plugin-shopify-devtools)
-[![license](https://img.shields.io/npm/l/@display-studio/vite-plugin-shopify-devtools.svg)](LICENSE)
+[![npm version][npm-version-src]][npm-version-href]
+[![npm downloads][npm-downloads-src]][npm-downloads-href]
+[![Build][build-src]][build-href]
 
 Development-only source inspection for Shopify Liquid themes, integrated into the official Vite DevTools dock. Hover or click rendered theme components, inspect their Liquid/DOM hierarchy, and open the defining section, theme block, or static snippet in your editor.
 
@@ -119,3 +120,12 @@ The dock button, logo, and favicon use the full-color Shopify bag (`assets/shopi
 ## Playground
 
 `playground/skeleton-theme` is a snapshot of Shopify's official [Skeleton theme](https://github.com/Shopify/skeleton-theme) (`main`, commit `a4f32d393b9eadf6c4403318ca39116832e5d1df`) with Vite set up like the Display starter (one CSS and one TS entrypoint) and wired to this plugin. It excludes `.git`, `.env`, `.shopify`, local `shopify.theme.toml`, and `node_modules`. See its `SNAPSHOT.md` for provenance and local setup.
+
+<!-- Badges -->
+
+[npm-version-src]: https://npmx.dev/api/registry/badge/version/@display-studio/vite-plugin-shopify-devtools
+[npm-version-href]: https://npmx.dev/package/@display-studio/vite-plugin-shopify-devtools
+[npm-downloads-src]: https://npmx.dev/api/registry/badge/downloads/@display-studio/vite-plugin-shopify-devtools
+[npm-downloads-href]: https://npmx.dev/package/@display-studio/vite-plugin-shopify-devtools
+[build-src]: https://img.shields.io/github/actions/workflow/status/display-design-studio/vite-plugin-shopify-devtools/ci.yml?branch=main&style=flat-square&label=build
+[build-href]: https://github.com/display-design-studio/vite-plugin-shopify-devtools/actions/workflows/ci.yml
