@@ -1,5 +1,8 @@
 # @display-studio/vite-plugin-shopify-devtools
 
+[![npm version](https://img.shields.io/npm/v/@display-studio/vite-plugin-shopify-devtools.svg)](https://www.npmjs.com/package/@display-studio/vite-plugin-shopify-devtools)
+[![license](https://img.shields.io/npm/l/@display-studio/vite-plugin-shopify-devtools.svg)](LICENSE)
+
 Development-only source inspection for Shopify Liquid themes, integrated into the official Vite DevTools dock. Hover or click rendered theme components, inspect their Liquid/DOM hierarchy, and open the defining section, theme block, or static snippet in your editor.
 
 ## Setup
