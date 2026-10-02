@@ -32,13 +32,20 @@ export default defineConfig({
 })
 ```
 
-Run Shopify against the temporary instrumented theme and Vite against the real source tree:
+That is all: keep running your project the way you already do (Vite alongside `shopify theme dev`). The plugin works next to [`vite-plugin-shopify`](https://github.com/barrel/shopify-vite) and `vite-plugin-shopify-theme`, needs no extra script, and does not touch your theme files.
 
-```sh
-npx shopify-devtools dev --environment development --live-reload full-page
-```
+Open **Shopify Liquid** from the Vite DevTools dock. Use **Inspect page** in the panel header or the dedicated inspector action in the dock to pick a rendered component. Production builds are untouched because both the plugin and DevTools integration use `apply: 'serve'`, and source Liquid files are never rewritten.
 
-`shopify-devtools dev` starts both `vite` and `shopify theme dev` itself and forwards its flags to Shopify, so it replaces your usual dev script (for example one that runs both with `concurrently`):
+## What it detects
+
+| Mode | Setup | Detects |
+| --- | --- | --- |
+| **Default** | none | Sections and section groups, matched to their `sections/*.liquid` file from the JSON templates and section groups of your theme. |
+| **Full mode** | start the theme through `shopify-devtools dev` | Sections, theme blocks, and static snippets, including their nesting. |
+
+### Full mode
+
+Blocks and snippets leave no trace in the HTML that Shopify renders, so the full tree needs markers in the Liquid. `shopify-devtools dev` writes them into a temporary copy of your theme (your source files are never modified), serves that copy through `shopify theme dev`, and starts `vite` for you. It forwards its flags to Shopify, so it replaces your usual dev script (for example one that runs both with `concurrently`):
 
 ```json
 {
@@ -48,10 +55,6 @@ npx shopify-devtools dev --environment development --live-reload full-page
   }
 }
 ```
-
-The source files are never modified: the component markers only exist in the temporary copy that Shopify serves. If you start the theme with a plain `shopify theme dev`, the DevTools panel loads but the component tree stays empty.
-
-Open **Shopify Liquid** from the Vite DevTools dock. Use **Inspect page** in the panel header or the dedicated inspector action in the dock to pick a rendered component. Production builds are untouched because both the plugin and DevTools integration use `apply: 'serve'`; source Liquid files are never rewritten.
 
 ## How it works
 
