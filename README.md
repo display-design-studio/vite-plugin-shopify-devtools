@@ -40,8 +40,21 @@ Open **Shopify Liquid** from the Vite DevTools dock. Use **Inspect page** in the
 
 | Mode | Setup | Detects |
 | --- | --- | --- |
-| **Default** | none | Sections and section groups, matched to their `sections/*.liquid` file from the JSON templates and section groups of your theme. |
-| **Full mode** | start the theme through `shopify-devtools dev` | Sections, theme blocks, and static snippets, including their nesting. |
+| **Default** | none | Sections and section groups, matched to their `sections/*.liquid` file from the JSON templates and section groups of your theme. Blocks and snippets inside them are **inferred** (see below). |
+| **Full mode** | start the theme through `shopify-devtools dev` | Sections, theme blocks, and static snippets, including their nesting, read exactly from markers. |
+
+### Inferred blocks and snippets
+
+Shopify leaves no trace of blocks and snippets in the HTML it renders, so in the default mode the plugin works them out. The server reads your Liquid, follows the static `{% render 'snippet' %}` calls and the blocks of each section, and records the markup each file emits first (tag, static classes, static `id` and `data-*` attributes). The panel then looks for that markup inside the section on the page and nests what it finds. Inferred entries are labelled **inferred**.
+
+It is a best effort, tuned to prefer showing nothing over showing something wrong:
+
+- Snippets that print no element of their own, or whose first element has no class or attribute to recognise it by, are not shown.
+- Two different components with identical markup inside the same parent are left out.
+- Markup that JavaScript rewrites after the page loads (Vue or React islands, for example) cannot be matched.
+- Dynamic parts of a class list are ignored: `class="card card--{{ size }}"` is recognised by `card`.
+
+Use the full mode when you need the exact tree. On a page served in full mode you can also measure how close the inference gets by running `await shopifyDevtools.compareInference()` in the browser console: it returns precision, recall, and the entries that were wrongly added or missed.
 
 ### Full mode
 
