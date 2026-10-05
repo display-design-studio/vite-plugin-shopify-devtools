@@ -8,6 +8,8 @@ import { defaultAllowedOrigins, loadEnv, version as viteVersion, type Plugin, ty
 import { INSPECT_ICON } from './inspect-icon.js'
 import { resolveSections } from './sections.js'
 import { invalidateGraph } from './graph.js'
+import { createThemeMirror, type ThemeMirror } from './mirror.js'
+import { instrumentInPlace, recoverInPlace, type InPlaceInstrumentation } from './in-place.js'
 
 const CLIENT_ID = '\0virtual:shopify-devtools/client'
 const RENDERER_PUBLIC_ID = 'virtual:shopify-devtools/renderer'
@@ -99,6 +101,10 @@ export interface ShopifyDevtoolsOptions {
   entry?: string
   editor?: string
   allowedOrigins?: string[]
+  /** Exact marker mode. Copy is safe and recommended; in-place rewrites sources temporarily. */
+  instrument?: false | 'copy' | 'in-place'
+  /** Theme directory when it cannot be derived from vite-plugin-shopify's assets outDir. */
+  themeRoot?: string
 }
 
 const SHOPIFY_CLI_ORIGINS = ['http://127.0.0.1:9292', 'http://localhost:9292']
@@ -215,6 +221,13 @@ export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): P
   let docks: { views?: Map<string, unknown>; update(entry: never): void; events?: { on(event: 'docks:entry:updated', handler: (entry: DockEntry) => void): unknown } } | undefined
   let origin: string | undefined
   let broadcastSourcesChanged: (() => void) | undefined
+  let instrumentation: ThemeMirror | InPlaceInstrumentation | undefined
+  let instrumentationRoot: string | undefined
+  const closeInstrumentation = async (): Promise<void> => {
+    const active = instrumentation
+    instrumentation = undefined
+    await active?.close()
+  }
   const fixDock = (entry: DockEntry): void => {
     const url = origin ? absoluteDockUrl(entry, origin) : undefined
     if (url) docks?.update({ ...entry, url } as never)
@@ -306,11 +319,28 @@ export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): P
       server.watcher?.on('add', changed)
       server.watcher?.on('change', changed)
       server.watcher?.on('unlink', changed)
+      return () => { void closeInstrumentation() }
     },
-    configResolved(config) {
+    async configResolved(config) {
       serve = config.command === 'serve'
       entrypoints = new Set(resolveEntrypoints(config.root, config.build as never))
+      if (!serve) return
+      if (!explicitEntry && entrypoints.size === 0) {
+        throw new Error('[shopify-devtools] No JavaScript entry was found in Vite build.input, so the DevTools client cannot be injected. Add a script entry to vite-plugin-shopify or set shopifyDevtools({ entry: "path/to/entry.ts" }).')
+      }
+      const themeRoot = path.resolve(options.themeRoot ?? resolveThemeRoot(config))
+      if (options.instrument === 'copy') {
+        instrumentationRoot = path.join(themeRoot, '.shopify-devtools', 'theme')
+        instrumentation = await createThemeMirror(themeRoot, { root: instrumentationRoot })
+        config.logger.info(`[shopify-devtools] Full-mode mirror ready at ${instrumentationRoot}. Run Shopify CLI with SHOPIFY_FLAG_PATH=${instrumentationRoot}`)
+      } else if (options.instrument === 'in-place') {
+        instrumentation = await instrumentInPlace(themeRoot)
+        config.logger.warn('[shopify-devtools] Full mode is instrumenting theme Liquid files in place. Originals are journalled and will be restored when Vite exits.')
+      } else if (await recoverInPlace(themeRoot)) {
+        config.logger.warn('[shopify-devtools] Recovered source files left instrumented by an earlier interrupted run.')
+      }
     },
+    async closeBundle() { await closeInstrumentation() },
     resolveId(id) {
       if (id === 'virtual:shopify-devtools/client') return CLIENT_ID
       if (id === RENDERER_PUBLIC_ID || id === RENDERER_ID) return RENDERER_ID

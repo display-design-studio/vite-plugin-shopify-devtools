@@ -71,6 +71,7 @@ function validateMetadata(manifest) {
     '@vitejs/devtools': '^0.7.6',
     '@vitejs/devtools-kit': '^0.7.6',
     chokidar: '^5.0.0',
+    ignore: '^7.0.5',
     'launch-editor': '^2.14.1',
   }, 'runtime dependencies differ')
 }
@@ -97,7 +98,7 @@ function validateCli(consumer) {
   strictEqual(result.status, 1, `CLI without arguments exited with ${result.status}`)
   strictEqual(result.signal, null, `CLI without arguments exited on signal ${result.signal}`)
   strictEqual(result.stdout, '', 'CLI usage must not be written to stdout')
-  match(result.stderr, /^Usage: shopify-devtools dev \[shopify theme dev flags\]\s*$/, 'CLI usage differs')
+  match(result.stderr, /^Usage: shopify-devtools dev \[--theme-path path\] \[--vite-port port\] \[shopify theme dev flags\]\s*$/, 'CLI usage differs')
 }
 
 const temporary = mkdtempSync(join(tmpdir(), 'vite-plugin-shopify-devtools-pack-'))

@@ -45,6 +45,13 @@ describe('Vite plugin', () => {
     expect(transform('x', '/theme/frontend/other.ts')).toBeUndefined()
   })
 
+  it('fails clearly when no JavaScript entry can receive the client', async () => {
+    const plugin = shopifyDevtools()
+    await expect((plugin.configResolved as (config: unknown) => Promise<void>)({
+      command: 'serve', root: '/theme', build: { rollupOptions: { input: ['/theme/assets/theme.css'] } }, logger: { warn: vi.fn(), info: vi.fn() },
+    })).rejects.toThrow('No JavaScript entry was found')
+  })
+
   it('generates a client module that is valid JavaScript', () => {
     const code = (shopifyDevtools().load as (id: string) => string)('\0virtual:shopify-devtools/client')
     const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as new (body: string) => unknown

@@ -66,6 +66,7 @@
     "@vitejs/devtools": "^0.7.6",
     "@vitejs/devtools-kit": "^0.7.6",
     "chokidar": "^5.0.0",
+    "ignore": "^7.0.5",
     "launch-editor": "^2.14.1"
   },
   "devDependencies": {

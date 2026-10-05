@@ -52,7 +52,7 @@ The tree supports standard keyboard navigation: Up and Down move through visible
 | Mode | Setup | Detects |
 | --- | --- | --- |
 | **Default** | none | Sections and section groups, matched to their `sections/*.liquid` file from the JSON templates and section groups of your theme. Blocks and snippets inside them are **inferred** (see below). |
-| **Full mode** | start the theme through `shopify-devtools dev` | Sections, theme blocks, and static snippets, including their nesting, read exactly from markers. |
+| **Full mode** | set `instrument: 'copy'` (recommended), `'in-place'`, or use `shopify-devtools dev` | Sections, theme blocks, and static snippets, including their nesting, read exactly from markers. |
 
 ### Inferred blocks and snippets
 
@@ -81,7 +81,23 @@ Run `bun run benchmark:inference` for the offline Dawn, Horizon, and Skeleton ho
 
 ### Full mode
 
-Blocks and snippets leave no trace in the HTML that Shopify renders, so the full tree needs markers in the Liquid. `shopify-devtools dev` writes them into a temporary copy of your theme (your source files are never modified), serves that copy through `shopify theme dev`, and starts `vite` for you. It forwards its flags to Shopify, so it replaces your usual dev script (for example one that runs both with `concurrently`):
+Blocks and snippets leave no trace in the HTML that Shopify renders, so the full tree needs markers in the Liquid. The recommended setup lets the Vite plugin maintain a deterministic, ignored mirror:
+
+```ts
+shopifyDevtools({ instrument: 'copy' })
+```
+
+Add `.shopify-devtools/` to `.gitignore`, start Vite first, and point Shopify CLI at the generated theme:
+
+```sh
+SHOPIFY_FLAG_PATH=.shopify-devtools/theme shopify theme dev
+```
+
+You can instead put `path = ".shopify-devtools/theme"` in the environment you use in `shopify.theme.toml`. An explicit `--path` or `SHOPIFY_FLAG_PATH` has higher precedence and is recommended when your Shopify CLI version does not apply `path` from an environment. The plugin copies and instruments before the Vite server starts, respects `.shopifyignore`, uses copy-on-write file clones for non-Liquid assets when supported, and then synchronizes only changed files. Source files are never modified.
+
+For projects where Shopify CLI must run directly against the source directory, `shopifyDevtools({ instrument: 'in-place' })` is an explicit opt-in. It writes an atomic recovery journal before changing Liquid, instruments new edits during the session, and restores originals on shutdown. On the next start it automatically recovers files left behind by a crash. Do not delete `.shopify-devtools/in-place-journal.json` while recovery is pending; if a file was independently changed after instrumentation, startup stops instead of overwriting it.
+
+The compatibility wrapper remains available. `shopify-devtools dev` writes markers into a temporary mirror, serves it through `shopify theme dev`, and starts Vite. It forwards Shopify flags and replaces a script that runs both commands with `concurrently`:
 
 ```json
 {
@@ -92,9 +108,13 @@ Blocks and snippets leave no trace in the HTML that Shopify renders, so the full
 }
 ```
 
+Use `--theme-path path/to/theme` when the theme is not the Vite root, `--vite-port 5174` to select a strict Vite port, and Shopify's own `--port 9293` for its preview. The wrapper checks requested/default Shopify ports before starting and reports conflicts clearly. On Windows it invokes the `.cmd` shims for both executables.
+
+The browser client must be injected through a JavaScript entry. The plugin discovers script entries from Vite's resolved `build.input`; a theme with CSS-only or no entry now stops with a clear error. Add a small entry such as `frontend/theme.ts` to your Shopify Vite plugin, or set `shopifyDevtools({ entry: 'frontend/theme.ts' })` when automatic discovery is not possible.
+
 ## How it works
 
-The Vite plugin registers a native `custom-render` panel through `devtools.setup`, so the component tree and inspector live inside Vite's shared dock rather than a separate imitation toolbar. The CLI copies Shopify theme directories and `shopify.theme.toml` to an OS temporary directory, instruments Liquid there with `@shopify/liquid-html-parser`, keeps the copy synchronized, and deletes it on shutdown. Static `{% render 'snippet' %}` calls in safe HTML contexts receive comment boundaries. Dynamic or unsafe renders fall back to their enclosing component. Sections and theme-block files get root boundaries; Shopify wrapper IDs and `block.shopify_attributes` provide runtime identity.
+The Vite plugin registers a native `custom-render` panel through `devtools.setup`, so the component tree and inspector live inside Vite's shared dock rather than a separate imitation toolbar. Full mode instruments Liquid with `@shopify/liquid-html-parser` in either a managed mirror or a journalled source session. Static `{% render 'snippet' %}` calls in safe HTML contexts receive comment boundaries. Dynamic or unsafe renders fall back to their enclosing component. Sections and theme-block files get root boundaries; Shopify wrapper IDs and `block.shopify_attributes` provide runtime identity.
 
 Open in editor uses the authenticated Vite DevTools RPC connection. The server resolves real paths and refuses files outside the theme root before launching the editor. See [Choosing an editor](#choosing-an-editor) for how the editor is selected. The cross-origin DevTools bootstrap is allowed automatically for the Shopify CLI preview (`127.0.0.1:9292`, `localhost:9292`), `*.myshopify.com`, and the store from `SHOPIFY_STORE_DOMAIN`, `SHOPIFY_FLAG_STORE`, or `shopify.theme.toml`. Only custom domains or tunnels need `allowedOrigins`.
 
