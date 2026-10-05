@@ -11,7 +11,10 @@ async function theme(): Promise<string> {
   await mkdir(path.join(root, 'templates'))
   await mkdir(path.join(root, 'sections'))
   for (const name of ['hero', 'main-product', 'main-collection', 'header', 'feed-artists']) await writeFile(path.join(root, 'sections', `${name}.liquid`), '<div></div>')
-  await writeFile(path.join(root, 'templates', 'index.json'), HEADER + JSON.stringify({ sections: { hero: { type: 'hero', name: 'Homepage hero' }, main: { type: 'main-collection' } } }))
+  await writeFile(path.join(root, 'templates', 'index.json'), HEADER + JSON.stringify({ sections: {
+    hero: { type: 'hero', name: 'Homepage hero', blocks: { app_review: { type: 'shopify://apps/reviews/blocks/stars/123', settings: { color: 'gold' } } }, block_order: ['app_review'] },
+    main: { type: 'main-collection' }, app_section: { type: 'shopify://apps/reviews/sections/recommendations/456', name: 'Recommendations' },
+  } }))
   await writeFile(path.join(root, 'templates', 'product.json'), HEADER + JSON.stringify({ sections: { main: { type: 'main-product' } } }))
   await writeFile(path.join(root, 'sections', 'header-group.json'), HEADER + JSON.stringify({ sections: { header: { type: 'header' } } }))
   return root
@@ -43,6 +46,16 @@ describe('resolveSections', () => {
     const id = 'shopify-section-template--1__main'
     expect((await resolveSections(root, [id], 'product'))[id]?.file).toBe('sections/main-product.liquid')
     expect((await resolveSections(root, [id], 'home'))[id]?.file).toBe('sections/main-collection.liquid')
+  })
+
+  it('keeps app sections and blocks with their owning JSON source', async () => {
+    const root = await theme()
+    const result = await resolveSections(root, ['shopify-section-template--1__hero', 'shopify-section-template--1__app_section'], 'home')
+    const appBlock = result['shopify-section-template--1__hero']?.tree?.find((entry) => entry.app)
+    expect(appBlock).toMatchObject({ app: true, label: 'stars', appType: 'shopify://apps/reviews/blocks/stars/123', instances: [{ id: 'app_review', sourceFile: 'templates/index.json' }] })
+    expect(result['shopify-section-template--1__app_section']).toMatchObject({
+      app: true, appType: 'shopify://apps/reviews/sections/recommendations/456', file: 'templates/index.json', instanceName: 'Recommendations', origin: 'template',
+    })
   })
 
   it('skips unknown sections, missing files and unsafe names', async () => {

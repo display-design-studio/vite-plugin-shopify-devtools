@@ -25,6 +25,8 @@ export interface ComponentNode extends ComponentSource {
   instanceSourceLine?: number
   callSiteFile?: string
   callSiteLine?: number
+  app?: boolean
+  appType?: string
 }
 
 export interface RpcCaller {
@@ -210,23 +212,33 @@ export class InspectorController {
   }
 
   async #enrichMarkedSections(tree: ComponentNode[]): Promise<void> {
-    const sections = flatten(tree).map(({ node }) => node).filter((node) => node.kind === 'section')
-    const wrappers = sections.flatMap((node) => {
-      const wrapper = node.roots[0]?.closest<HTMLElement>('[id^="shopify-section-"]')
-      return wrapper ? [wrapper] : []
-    })
+    const wrappers = sectionWrappers()
     if (!wrappers.length || !this.rpc) return
     try {
       const resolved = await this.#resolveSections(wrappers)
       if (this.tree !== tree) return
+      const known = new Set(flatten(tree).map(({ node }) => node.roots[0]?.closest<HTMLElement>('[id^="shopify-section-"]')?.id).filter(Boolean))
+      const appWrappers = wrappers.filter((wrapper) => !known.has(wrapper.id) && resolved[wrapper.id]?.app)
+      tree.push(...sectionTree(appWrappers, resolved))
+      const sections = flatten(tree).map(({ node }) => node).filter((node) => node.kind === 'section')
       for (const node of sections) {
         const id = node.roots[0]?.closest<HTMLElement>('[id^="shopify-section-"]')?.id
         const source = id ? resolved[id] : undefined
         if (source) Object.assign(node, {
           instanceKey: source.instanceKey, instanceName: source.instanceName, owner: source.owner,
-          ownerFilename: source.ownerFilename, origin: source.origin,
+          ownerFilename: source.ownerFilename, origin: source.origin, instanceSourceFile: source.instanceSourceFile,
+          instanceSourceLine: source.instanceSourceLine, app: source.app, appType: source.appType,
         })
         if (source?.tree) {
+          const wrapper = node.roots[0]?.closest<HTMLElement>('[id^="shopify-section-"]')
+          const directApps = source.tree.filter((expectation) => expectation.app)
+          if (wrapper && directApps.length) {
+            const counts = new Map<string, number>()
+            for (const existing of flatten(tree).map((entry) => entry.node)) counts.set(existing.id, Math.max(counts.get(existing.id) ?? 0, existing.occurrence + 1))
+            const inferred = inferNodes(wrapper, directApps, { occurrence: (componentId) => { const value = counts.get(componentId) ?? 0; counts.set(componentId, value + 1); return value } }, node)
+            const ids = new Set(flatten(node.children).map((entry) => entry.node.shopifyId).filter(Boolean))
+            node.children.push(...inferred.filter((child) => !child.shopifyId || !ids.has(child.shopifyId)))
+          }
           const instances = source.tree.flatMap(function collect(expectation: Expectation): Array<{ file: string, instance: BlockInstance }> {
             return [...(expectation.instances ?? []).map((instance) => ({ file: expectation.file, instance })), ...expectation.children.flatMap(collect)]
           })

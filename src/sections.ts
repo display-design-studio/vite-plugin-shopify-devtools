@@ -13,10 +13,16 @@ export interface ResolvedSection {
   owner?: string
   ownerFilename?: string
   origin?: 'template' | 'section-group' | 'static'
+  app?: boolean
+  appType?: string
+  instanceSourceFile?: string
+  instanceSourceLine?: number
 }
 
 const MAX_IDS = 200
 const SECTION_NAME = /^[A-Za-z0-9_.-]+$/
+const APP_TYPE = /^shopify:\/\/apps\/[^\s]+$/
+const validType = (value: string): boolean => SECTION_NAME.test(value) || APP_TYPE.test(value)
 const PAGE_TYPE_TEMPLATES: Record<string, string> = { home: 'index' }
 
 /** Parses Shopify JSON files, which may start with a block comment written by the theme editor. */
@@ -43,7 +49,7 @@ export function parseJsonc(text: string): unknown {
   return JSON.parse(out)
 }
 
-type Candidate = { owner: string; ownerFilename: string; key?: string; name?: string; type: string; blocks: JsonBlock[] }
+type Candidate = { owner: string; ownerFilename: string; key?: string; name?: string; type: string; blocks: JsonBlock[]; sourceLine?: number }
 type RawBlock = { type?: unknown; name?: unknown; settings?: unknown; disabled?: unknown; blocks?: Record<string, RawBlock>; block_order?: unknown }
 
 const lineOfKey = (text: string, key: string): number => {
@@ -58,7 +64,7 @@ function normalizeBlocks(raw: RawBlock | undefined, text: string, sourceFile: st
   const order = Array.isArray(raw?.block_order) ? raw.block_order.filter((id): id is string => typeof id === 'string') : Object.keys(blocks)
   return order.flatMap((id) => {
     const block = blocks[id]
-    if (!block || block.disabled === true || typeof block.type !== 'string' || !SECTION_NAME.test(block.type)) return []
+    if (!block || block.disabled === true || typeof block.type !== 'string' || !validType(block.type)) return []
     const settings = block.settings && typeof block.settings === 'object' && !Array.isArray(block.settings) ? block.settings as Record<string, unknown> : undefined
     return [{ id, type: block.type, settings, sourceFile, sourceLine: lineOfKey(text, id), blocks: normalizeBlocks(block, text, sourceFile) }]
   })
@@ -70,8 +76,8 @@ async function readSectionTypes(file: string): Promise<Array<[string, { type: st
     const data = parseJsonc(text) as { sections?: Record<string, RawBlock> }
     const sourceFile = path.relative(path.dirname(path.dirname(file)), file).split(path.sep).join('/')
     return Object.entries(data?.sections ?? {})
-      .filter((entry): entry is [string, RawBlock & { type: string }] => typeof entry[1]?.type === 'string' && SECTION_NAME.test(entry[1].type))
-      .map(([key, value]) => [key, { type: value.type, name: typeof value.name === 'string' ? value.name : undefined, blocks: normalizeBlocks(value, text, sourceFile) }])
+      .filter((entry): entry is [string, RawBlock & { type: string }] => typeof entry[1]?.type === 'string' && validType(entry[1].type))
+      .map(([key, value]) => [key, { type: value.type, name: typeof value.name === 'string' ? value.name : undefined, sourceLine: lineOfKey(text, key), blocks: normalizeBlocks(value, text, sourceFile) }])
   } catch { return [] }
 }
 
@@ -131,6 +137,14 @@ export async function resolveSections(root: string, ids: unknown, pageType?: unk
       }
     }
     if (!found) continue
+    if (APP_TYPE.test(found.type)) {
+      result[id] = {
+        file: found.ownerFilename, line: found.sourceLine ?? 1, kind: 'section', instanceKey: found.key,
+        instanceName: found.name, owner: found.owner, ownerFilename: found.ownerFilename, origin,
+        app: true, appType: found.type, instanceSourceFile: found.ownerFilename, instanceSourceLine: found.sourceLine,
+      }
+      continue
+    }
     const file = `sections/${found.type}.liquid`
     if (await exists(file)) result[id] = {
       file, line: 1, kind: 'section', tree: await sectionExpectations(root, file, found.blocks),

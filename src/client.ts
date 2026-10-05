@@ -193,7 +193,7 @@ export class ShopifyDevtools extends HTMLElement {
     this.#shadow.querySelector('#panel-inspect')?.setAttribute('aria-pressed', String(force))
     this.#tree = this.#controller.tree
     const signature = this.#tree.flatMap(function walk(node): ComponentNode[] { return [node, ...node.children.flatMap(walk)] })
-      .map((node) => [node.id, node.occurrence, node.instanceKey, node.instanceName, node.origin, node.instanceSourceFile, node.callSiteFile, node.callSiteLine, JSON.stringify(node.settings), node.children.length].join('|')).join('\n')
+      .map((node) => [node.id, node.occurrence, node.instanceKey, node.instanceName, node.origin, node.app, node.appType, node.instanceSourceFile, node.callSiteFile, node.callSiteLine, JSON.stringify(node.settings), node.children.length].join('|')).join('\n')
     if (signature !== this.#treeSignature) { this.#treeSignature = signature; this.renderTree() }
     if (this.#controller.selected) this.showSelection(this.#controller.selected)
     if (this.#controller.error && this.#controller.error !== this.#shownError) {
@@ -216,7 +216,7 @@ export class ShopifyDevtools extends HTMLElement {
   nodeKey(node: ComponentNode): string { return `${node.id}:${node.occurrence}` }
 
   originLabel(node: ComponentNode): string | undefined {
-    return node.origin === 'template' ? 'Template' : node.origin === 'section-group' ? 'Section group' : undefined
+    return node.app ? 'App' : node.origin === 'template' ? 'Template' : node.origin === 'section-group' ? 'Section group' : undefined
   }
 
   searchText(node: ComponentNode): string {
@@ -252,7 +252,8 @@ export class ShopifyDevtools extends HTMLElement {
 
   // Inline blocks live in their section's file, so the file name alone would repeat the section.
   displayName(node: ComponentNode, suffix = true): string {
-    const primary = node.label && node.file.startsWith('sections/') ? node.label : node.file.split('/').at(-1) ?? node.file
+    const appName = node.appType?.match(/\/(?:blocks|sections)\/([^/]+)/)?.[1]
+    const primary = node.app ? node.instanceName ?? node.label ?? appName ?? 'App' : node.label && node.file.startsWith('sections/') ? node.label : node.file.split('/').at(-1) ?? node.file
     const name = [primary, node.instanceName, node.instanceKey].filter(Boolean).join(' · ')
     if (!suffix) return name
     const identical = this.#tree.flatMap(function walk(item): ComponentNode[] { return [item, ...item.children.flatMap(walk)] })
@@ -323,7 +324,10 @@ export class ShopifyDevtools extends HTMLElement {
     } else if (event.key === 'ArrowLeft') {
       if (node.children.length && !this.#collapsed.has(this.nodeKey(node)) && !this.#query) this.toggleNode(node, false)
       else target = node.parent ?? undefined
-    } else if (event.key === 'Enter') void this.openEditor(node)
+    } else if (event.key === 'Enter') {
+      if (node.app && node.instanceSourceFile) void this.#controller.openSource(node.instanceSourceFile, node.instanceSourceLine ?? 1)
+      else void this.openEditor(node)
+    }
     else return
     event.preventDefault()
     if (target) this.focusNode(target)
@@ -370,10 +374,12 @@ export class ShopifyDevtools extends HTMLElement {
       if (copy) { const control = document.createElement('button'); control.className = 'copy'; control.type = 'button'; control.setAttribute('aria-label', `Copy ${label}`); control.textContent = 'Copy'; control.addEventListener('click', () => void this.copyValue(copy)); dd.append(control) }
       fields.append(dt, dd)
     }
-    const open = document.createElement('button'); open.className = 'open-editor'; open.textContent = 'Open in editor'
-    open.addEventListener('click', () => void this.openEditor(node, open))
     const card = document.createElement('section'); card.className = 'card'
-    const actions = document.createElement('div'); actions.className = 'detail-actions'; actions.append(open)
+    const actions = document.createElement('div'); actions.className = 'detail-actions'
+    if (!node.app) {
+      const open = document.createElement('button'); open.className = 'open-editor'; open.textContent = 'Open in editor'
+      open.addEventListener('click', () => void this.openEditor(node, open)); actions.append(open)
+    }
     if (node.instanceSourceFile) {
       const openInstance = document.createElement('button'); openInstance.className = 'open-source'; openInstance.textContent = 'Open template JSON'
       openInstance.addEventListener('click', () => void this.openInstanceSource(node, openInstance))
@@ -385,7 +391,9 @@ export class ShopifyDevtools extends HTMLElement {
       openCallSite.addEventListener('click', () => void this.openRelatedSource(node.callSiteFile!, node.callSiteLine ?? 1, callLabel, openCallSite))
       actions.append(openCallSite)
     }
-    card.append(heading, actions, fields)
+    card.append(heading)
+    if (actions.childElementCount) card.append(actions)
+    card.append(fields)
     if (node.settings) {
       const settingsHeading = document.createElement('h3'); settingsHeading.textContent = 'Block settings'
       const settings = document.createElement('pre'); settings.className = 'settings'; settings.textContent = JSON.stringify(node.settings, null, 2)

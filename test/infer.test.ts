@@ -80,4 +80,13 @@ describe('inferNodes', () => {
     expect(nodes).toHaveLength(1)
     expect(nodes[0]).toMatchObject({ file: 'blocks/text.liquid', shopifyId: 'text-a' })
   })
+
+  it('shows app blocks from runtime identity without a local Liquid definition', () => {
+    const app: Expectation = {
+      kind: 'block', file: 'templates/index.json', line: 8, label: 'stars', roots: [], children: [], shopifyAttributes: true, app: true,
+      appType: 'shopify://apps/reviews/blocks/stars/123', instances: [{ id: 'review-a', type: 'shopify://apps/reviews/blocks/stars/123', sourceFile: 'templates/index.json', sourceLine: 8 }],
+    }
+    const nodes = run(`<div data-shopify-editor-block='{"id":"review-a","type":"shopify://apps/reviews/blocks/stars/123"}'></div>`, [app])
+    expect(nodes[0]).toMatchObject({ app: true, label: 'stars · review-a', shopifyId: 'review-a', instanceSourceFile: 'templates/index.json' })
+  })
 })

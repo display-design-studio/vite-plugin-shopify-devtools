@@ -36,6 +36,8 @@ export interface Expectation {
   callSites?: SourceReference[]
   /** The component's root prints Shopify's runtime block identity attribute. */
   shopifyAttributes?: boolean
+  app?: boolean
+  appType?: string
 }
 
 export interface SourceReference { file: string; line: number }
@@ -229,6 +231,15 @@ async function childExpectations(root: string, file: string, graph: FileGraph, b
   const withFile = (calls: RenderCall[]): RenderCall[] => calls.map((call) => ({ ...call, file }))
   const out = await snippetExpectations(root, withFile(graph.renderCalls), depth, trail)
 
+  for (const type of unique(blocks.map((block) => block.type).filter((type) => type.startsWith('shopify://apps/')))) {
+    const instances = blocks.filter((block) => block.type === type)
+    const label = type.match(/\/blocks\/([^/]+)/)?.[1] ?? 'App block'
+    out.push({
+      kind: 'block', file: instances[0]?.sourceFile ?? file, line: instances[0]?.sourceLine ?? 1,
+      label, roots: [], children: [], instances, shopifyAttributes: true, app: true, appType: type,
+    })
+  }
+
   for (const slot of graph.slots) {
     const children = await snippetExpectations(root, withFile(slot.renderCalls), depth + 1, trail)
     if (!slot.roots.length && !slot.shopifyAttributes) { out.push(...children); continue }
@@ -254,7 +265,7 @@ async function childExpectations(root: string, file: string, graph: FileGraph, b
   }
 
   if (graph.contentForBlocks && depth <= MAX_DEPTH) {
-    for (const type of unique(blocks.map((block) => block.type))) {
+    for (const type of unique(blocks.map((block) => block.type).filter((type) => !type.startsWith('shopify://apps/')))) {
       const blockFile = `blocks/${type}.liquid`
       const blockGraph = await loadGraph(root, blockFile)
       if (!blockGraph) continue

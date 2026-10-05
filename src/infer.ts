@@ -93,6 +93,8 @@ export function inferNodes(scope: Element, expectations: Expectation[], context:
       instanceSourceLine: instance?.sourceLine,
       callSiteFile: callSite?.file,
       callSiteLine: callSite?.line,
+      app: expectation.app,
+      appType: expectation.appType,
     }
     node.children = inferNodes(element, expectation.children, context, node, claimed)
     nodes.push(node)

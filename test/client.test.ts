@@ -294,6 +294,26 @@ describe('pages without markers', () => {
     expect(rpcCall.mock.calls.filter(([name]) => name === 'shopify-devtools:resolve-sections')).toHaveLength(callsBefore + 1)
   })
 
+  it('shows app blocks with an App badge and opens their owning template JSON', async () => {
+    const appType = 'shopify://apps/reviews/blocks/stars/123'
+    rpcCall.mockImplementation(async (name: string) => name === 'shopify-devtools:resolve-sections'
+      ? { 'shopify-section-template--44__apps': { file: 'sections/apps.liquid', line: 1, kind: 'section', tree: [{
+          kind: 'block', file: 'templates/index.json', line: 18, label: 'stars', roots: [], children: [], shopifyAttributes: true, app: true, appType,
+          instances: [{ id: 'review-a', type: appType, sourceFile: 'templates/index.json', sourceLine: 18 }],
+        }] } }
+      : { ok: true })
+    document.body.innerHTML = `<div id="shopify-section-template--44__apps"><div data-shopify-editor-block='{"id":"review-a","type":"${appType}"}'></div></div>`
+    document.dispatchEvent(new Event('shopify:section:load'))
+    const shadow = document.querySelector('shopify-liquid-devtools')?.shadowRoot
+    await vi.waitFor(() => expect(shadow?.querySelectorAll('.tree-item')).toHaveLength(2))
+    ;(shadow?.querySelectorAll('.tree-item')[1] as HTMLButtonElement).click()
+    expect(shadow?.querySelector('#details')?.textContent).toContain('App')
+    expect(shadow?.querySelector('#details .open-editor')).toBeNull()
+    expect(shadow?.querySelector('#details .open-source')?.textContent).toBe('Open template JSON')
+    ;(shadow?.querySelector('#details .open-source') as HTMLButtonElement).click()
+    await vi.waitFor(() => expect(rpcCall).toHaveBeenCalledWith('shopify-devtools:open-in-editor', { file: 'templates/index.json', line: 18 }))
+  })
+
   it('says so when the page has no sections at all', async () => {
     document.body.innerHTML = '<main>Plain page</main>'
     const shadow = document.querySelector('shopify-liquid-devtools')?.shadowRoot

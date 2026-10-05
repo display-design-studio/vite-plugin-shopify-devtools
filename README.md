@@ -62,6 +62,8 @@ Both dynamic block regions (`{% content_for 'blocks' %}` and loops over `section
 
 When a block root prints `{{ block.shopify_attributes }}` (or the corresponding custom loop variable), the panel uses Shopify's runtime block ID and type directly. This identifies generic block roots that have no distinctive static class or attribute and prevents similarly shaped block types from being confused.
 
+Theme app extension sections and blocks are retained in the tree with an **App** badge instead of being discarded as unknown local component types. Their owning template JSON and Shopify ID remain available, while the panel does not offer an editor link to extension-owned Liquid source that is not part of the theme.
+
 Changes to template JSON, section groups, sections, blocks, and snippets invalidate the resolved tree automatically; the open panel refreshes without requiring a page reload.
 
 It is a best effort, tuned to prefer showing nothing over showing something wrong:
