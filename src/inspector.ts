@@ -23,6 +23,8 @@ export interface ComponentNode extends ComponentSource {
   settings?: Record<string, unknown>
   instanceSourceFile?: string
   instanceSourceLine?: number
+  callSiteFile?: string
+  callSiteLine?: number
 }
 
 export interface RpcCaller {
@@ -227,6 +229,17 @@ export class InspectorController {
             if (match) Object.assign(descendant, {
               settings: match.instance.settings, instanceSourceFile: match.instance.sourceFile, instanceSourceLine: match.instance.sourceLine,
             })
+          }
+          const callSites = source.tree.flatMap(function collectCalls(expectation: Expectation): Array<{ file: string, site: NonNullable<Expectation['callSites']>[number] }> {
+            return [...(expectation.callSites ?? []).map((site) => ({ file: expectation.file, site })), ...expectation.children.flatMap(collectCalls)]
+          })
+          const used = new Map<string, number>()
+          for (const descendant of flatten(node.children).map((entry) => entry.node).filter((child) => child.kind === 'snippet')) {
+            const index = used.get(descendant.file) ?? 0
+            used.set(descendant.file, index + 1)
+            const candidates = callSites.filter((entry) => entry.file === descendant.file)
+            const match = candidates[index] ?? candidates[0]
+            if (match) Object.assign(descendant, { callSiteFile: match.site.file, callSiteLine: match.site.line })
           }
         }
       }

@@ -32,18 +32,25 @@ export interface Expectation {
   children: Expectation[]
   /** Blocks of this type in the template JSON, in order: the n-th DOM match is the n-th instance. */
   instances?: BlockInstance[]
+  /** Static render call sites in the parent Liquid file, in runtime order when known. */
+  callSites?: SourceReference[]
 }
+
+export interface SourceReference { file: string; line: number }
+interface RenderCall extends SourceReference { name: string }
 
 interface Slot {
   types: string[] | null
   roots: Signature[]
   renders: string[]
+  renderCalls: RenderCall[]
   line: number
 }
 
 export interface FileGraph {
   roots: Signature[]
   renders: string[]
+  renderCalls: RenderCall[]
   slots: Slot[]
   contentForBlocks: boolean
 }
@@ -118,11 +125,11 @@ export function analyze(source: string): FileGraph {
   const slots: Slot[] = []
   let contentForBlocks = false
 
-  const collect = (nodes: Node[] = [], into: Set<string>): void => {
+  const collect = (nodes: Node[] = [], into: RenderCall[], file = ''): void => {
     for (const node of nodes) {
       if (isBlockLoop(node)) { slots.push(...slotsOf(node)); continue }
       const name = staticRenderName(node, source)
-      if (name) into.add(name)
+      if (name) into.push({ name, file, line: lineAt(source, node.position?.start ?? 0) })
       if (node.type === 'LiquidTag' && node.name === 'content_for' && node.position && /content_for\s+['"]blocks['"]/.test(source.slice(node.position.start, node.position.end))) contentForBlocks = true
       collect(node.children, into)
     }
@@ -133,21 +140,21 @@ export function analyze(source: string): FileGraph {
     const caseTag = findCase(body)
     const at = (node: Node): number => lineAt(source, node.position?.start ?? loop.position?.start ?? 0)
     if (!caseTag) {
-      const renders = new Set<string>()
-      collect(body, renders)
-      return [{ types: null, roots: usableRoots(topElements(body)), renders: [...renders], line: at(loop) }]
+      const renderCalls: RenderCall[] = []
+      collect(body, renderCalls)
+      return [{ types: null, roots: usableRoots(topElements(body)), renders: unique(renderCalls.map((call) => call.name)), renderCalls, line: at(loop) }]
     }
     return (caseTag.children ?? []).filter((branch) => branch.name === 'when').map((branch) => {
-      const renders = new Set<string>()
-      collect(branch.children, renders)
+      const renderCalls: RenderCall[] = []
+      collect(branch.children, renderCalls)
       const types = (Array.isArray(branch.markup) ? branch.markup as Node[] : []).map((value) => String(value.value)).filter((value) => NAME.test(value))
-      return { types, roots: usableRoots(topElements(branch.children)), renders: [...renders], line: at(branch) }
+      return { types, roots: usableRoots(topElements(branch.children)), renders: unique(renderCalls.map((call) => call.name)), renderCalls, line: at(branch) }
     })
   }
 
-  const renders = new Set<string>()
-  collect(ast.children, renders)
-  return { roots: usableRoots(topElements(ast.children)), renders: [...renders], slots, contentForBlocks }
+  const renderCalls: RenderCall[] = []
+  collect(ast.children, renderCalls)
+  return { roots: usableRoots(topElements(ast.children)), renders: unique(renderCalls.map((call) => call.name)), renderCalls, slots, contentForBlocks }
 }
 
 const cache = new Map<string, { mtime: number; graph: FileGraph }>()
@@ -166,17 +173,18 @@ async function loadGraph(root: string, file: string): Promise<FileGraph | undefi
 
 const unique = <T>(values: T[]): T[] => [...new Set(values)]
 
-async function snippetExpectations(root: string, names: string[], depth: number, trail: string[]): Promise<Expectation[]> {
+async function snippetExpectations(root: string, calls: RenderCall[], depth: number, trail: string[]): Promise<Expectation[]> {
   if (depth > MAX_DEPTH) return []
   const found = new Map<string, Expectation>()
-  for (const name of unique(names)) {
+  for (const name of unique(calls.map((call) => call.name))) {
     if (!NAME.test(name) || trail.includes(name)) continue
     const file = `snippets/${name}.liquid`
     const graph = await loadGraph(root, file)
     if (!graph) continue
     const children = await childExpectations(root, file, graph, [], depth + 1, [...trail, name])
+    const callSites = calls.filter((call) => call.name === name).map(({ file: callFile, line }) => ({ file: callFile, line }))
     // A snippet with no element of its own (or none that can be told apart) is transparent: its children belong to the caller.
-    const entries: Expectation[] = graph.roots.length ? [{ kind: 'snippet', file, line: 1, roots: graph.roots, children }] : children
+    const entries: Expectation[] = graph.roots.length ? [{ kind: 'snippet', file, line: 1, roots: graph.roots, children, callSites }] : children
     for (const entry of entries) if (!found.has(entry.file + (entry.label ?? ''))) found.set(entry.file + (entry.label ?? ''), entry)
   }
   return [...found.values()]
@@ -184,10 +192,11 @@ async function snippetExpectations(root: string, names: string[], depth: number,
 
 /** What a file can render: static snippets, the section's own block loop, and theme blocks from the template JSON. */
 async function childExpectations(root: string, file: string, graph: FileGraph, blocks: JsonBlock[], depth: number, trail: string[]): Promise<Expectation[]> {
-  const out = await snippetExpectations(root, graph.renders, depth, trail)
+  const withFile = (calls: RenderCall[]): RenderCall[] => calls.map((call) => ({ ...call, file }))
+  const out = await snippetExpectations(root, withFile(graph.renderCalls), depth, trail)
 
   for (const slot of graph.slots) {
-    const children = await snippetExpectations(root, slot.renders, depth + 1, trail)
+    const children = await snippetExpectations(root, withFile(slot.renderCalls), depth + 1, trail)
     if (!slot.roots.length) { out.push(...children); continue }
     for (const type of slot.types ?? [null]) {
       const instances = blocks.filter((block) => !type || block.type === type).map(({ id, type: blockType, settings, sourceFile, sourceLine }) => ({ id, type: blockType, settings, sourceFile, sourceLine }))

@@ -115,6 +115,8 @@ describe('inference against the exact tree', () => {
     expect(card?.children.map((child) => child.file)).toEqual(['snippets/demo-badge.liquid', 'snippets/demo-button.liquid'])
     expect(card?.parent?.file).toBe('sections/inference-demo.liquid')
     expect(card?.inferred).toBe(true)
+    expect(card).toMatchObject({ callSiteFile: 'sections/inference-demo.liquid', callSiteLine: 6 })
+    expect(card?.children[0]).toMatchObject({ callSiteFile: 'snippets/demo-card.liquid', callSiteLine: 10 })
   })
 
   it('labels inline blocks with their template ids and nests theme blocks', async () => {

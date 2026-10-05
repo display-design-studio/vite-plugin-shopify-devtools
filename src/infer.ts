@@ -58,6 +58,7 @@ export function inferNodes(scope: Element, expectations: Expectation[], context:
     const index = seen.get(expectation) ?? 0
     seen.set(expectation, index + 1)
     const instance = expectation.instances?.[index]
+    const callSite = expectation.callSites?.[index] ?? expectation.callSites?.[0]
     const id = `${expectation.kind}:${expectation.file}${expectation.label ? `:${expectation.label}` : ''}`
     const node: ComponentNode = {
       id,
@@ -76,6 +77,8 @@ export function inferNodes(scope: Element, expectations: Expectation[], context:
       settings: instance?.settings,
       instanceSourceFile: instance?.sourceFile,
       instanceSourceLine: instance?.sourceLine,
+      callSiteFile: callSite?.file,
+      callSiteLine: callSite?.line,
     }
     node.children = inferNodes(element, expectation.children, context, node, claimed)
     nodes.push(node)

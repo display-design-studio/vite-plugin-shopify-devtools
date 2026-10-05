@@ -95,7 +95,7 @@ export class ShopifyDevtools extends HTMLElement {
     this.#shadow.querySelector('#panel-inspect')?.setAttribute('aria-pressed', String(force))
     this.#tree = this.#controller.tree
     const signature = this.#tree.flatMap(function walk(node): ComponentNode[] { return [node, ...node.children.flatMap(walk)] })
-      .map((node) => [node.id, node.occurrence, node.instanceKey, node.instanceName, node.origin, node.children.length].join('|')).join('\n')
+      .map((node) => [node.id, node.occurrence, node.instanceKey, node.instanceName, node.origin, node.instanceSourceFile, node.callSiteFile, node.callSiteLine, JSON.stringify(node.settings), node.children.length].join('|')).join('\n')
     if (signature !== this.#treeSignature) { this.#treeSignature = signature; this.renderTree() }
     if (this.#controller.selected) this.showSelection(this.#controller.selected)
     if (this.#controller.error && this.#controller.error !== this.#shownError) {
@@ -281,6 +281,11 @@ export class ShopifyDevtools extends HTMLElement {
       openInstance.addEventListener('click', () => void this.openInstanceSource(node, openInstance))
       actions.append(openInstance)
     }
+    if (node.callSiteFile) {
+      const openCallSite = document.createElement('button'); openCallSite.className = 'open-source'; openCallSite.textContent = 'Open render call'
+      openCallSite.addEventListener('click', () => void this.openRelatedSource(node.callSiteFile!, node.callSiteLine ?? 1, 'Open render call', openCallSite))
+      actions.append(openCallSite)
+    }
     card.append(heading, actions, fields)
     if (node.settings) {
       const settingsHeading = document.createElement('h3'); settingsHeading.textContent = 'Block settings'
@@ -297,13 +302,17 @@ export class ShopifyDevtools extends HTMLElement {
 
   async openInstanceSource(node: ComponentNode, button: HTMLButtonElement): Promise<void> {
     if (!node.instanceSourceFile) return
+    await this.openRelatedSource(node.instanceSourceFile, node.instanceSourceLine ?? 1, 'Open template JSON', button)
+  }
+
+  async openRelatedSource(file: string, line: number, label: string, button: HTMLButtonElement): Promise<void> {
     button.disabled = true; button.textContent = 'Opening…'
     try {
-      await this.#controller.openSource(node.instanceSourceFile, node.instanceSourceLine ?? 1)
-      this.toast(`Opened ${node.instanceSourceFile}:${node.instanceSourceLine ?? 1}`, 'success')
+      await this.#controller.openSource(file, line)
+      this.toast(`Opened ${file}:${line}`, 'success')
     } catch (error) {
-      this.toast(error instanceof Error ? error.message : 'Could not open the template JSON', 'error')
-    } finally { button.disabled = false; button.textContent = 'Open template JSON' }
+      this.toast(error instanceof Error ? error.message : `Could not ${label.toLocaleLowerCase()}`, 'error')
+    } finally { button.disabled = false; button.textContent = label }
   }
 
   async openEditor(node: ComponentNode, button?: HTMLButtonElement): Promise<void> {

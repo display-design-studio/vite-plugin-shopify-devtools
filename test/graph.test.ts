@@ -18,6 +18,7 @@ describe('analyze', () => {
     const graph = analyze('<div class="card card--{{ size }} {{ extra }} wide" id="x" data-k="1" data-v="{{ v }}">{% render "icon" %}</div>')
     expect(graph.roots).toEqual([{ tag: 'div', classes: ['card', 'wide'], attrs: { id: 'x', 'data-k': '1' } }])
     expect(graph.renders).toEqual(['icon'])
+    expect(graph.renderCalls).toEqual([{ name: 'icon', file: '', line: 1 }])
   })
 
   it('looks through Liquid control flow but not into elements, and reads svg', () => {
@@ -40,6 +41,7 @@ describe('analyze', () => {
 {% endfor %}`)
     expect(graph.renders).toEqual(['top'])
     expect(graph.slots.map((slot) => [slot.types, slot.roots[0]?.classes, slot.renders])).toEqual([[['a'], ['a'], ['in-a']], [['b', 'c'], ['b'], []]])
+    expect(graph.slots[0].renderCalls[0]).toMatchObject({ name: 'in-a', line: 4 })
   })
 
   it('treats a block loop without case as one slot for every type', () => {
@@ -65,6 +67,7 @@ describe('sectionExpectations', () => {
     const tree = await sectionExpectations(root, 'sections/s.liquid')
     expect(tree.map((entry) => entry.file)).toEqual(['snippets/leaf.liquid', 'snippets/loop.liquid'])
     expect(tree[1].children).toEqual([])
+    expect(tree[0].callSites).toEqual([{ file: 'snippets/wrap.liquid', line: 1 }])
   })
 
   it('maps template blocks to theme block files and nests the ones inside them', async () => {

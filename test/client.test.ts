@@ -225,18 +225,25 @@ describe('pages without markers', () => {
             tree: [{
               kind: 'block', file: 'blocks/text.liquid', line: 1, label: 'text', roots: [{ tag: 'p', classes: ['copy'], attrs: {} }], children: [],
               instances: [{ id: 'copy_a', type: 'text', settings: { heading: 'Hello', enabled: true }, sourceFile: 'templates/index.json', sourceLine: 42 }],
+            }, {
+              kind: 'snippet', file: 'snippets/icon.liquid', line: 1, roots: [{ tag: 'i', classes: ['icon'], attrs: {} }], children: [],
+              callSites: [{ file: 'sections/settings-demo.liquid', line: 12 }],
             }],
           },
         }
       : { ok: true })
-    document.body.innerHTML = '<div id="shopify-section-template--9__settings"><p class="copy">Hello</p></div>'
+    document.body.innerHTML = '<div id="shopify-section-template--9__settings"><p class="copy">Hello</p><i class="icon"></i></div>'
     document.dispatchEvent(new Event('shopify:section:load'))
     const shadow = document.querySelector('shopify-liquid-devtools')?.shadowRoot
-    await vi.waitFor(() => expect(shadow?.querySelectorAll('.tree-item')).toHaveLength(2))
+    await vi.waitFor(() => expect(shadow?.querySelectorAll('.tree-item')).toHaveLength(3))
     ;(shadow?.querySelectorAll('.tree-item')[1] as HTMLButtonElement).click()
     expect(shadow?.querySelector('.settings')?.textContent).toContain('"heading": "Hello"')
     ;(shadow?.querySelector('.open-source') as HTMLButtonElement).click()
     await vi.waitFor(() => expect(rpcCall).toHaveBeenCalledWith('shopify-devtools:open-in-editor', { file: 'templates/index.json', line: 42 }))
+    ;(shadow?.querySelectorAll('.tree-item')[2] as HTMLButtonElement).click()
+    expect(shadow?.querySelector('.open-source')?.textContent).toBe('Open render call')
+    ;(shadow?.querySelector('.open-source') as HTMLButtonElement).click()
+    await vi.waitFor(() => expect(rpcCall).toHaveBeenCalledWith('shopify-devtools:open-in-editor', { file: 'sections/settings-demo.liquid', line: 12 }))
   })
 
   it('says so when the page has no sections at all', async () => {
