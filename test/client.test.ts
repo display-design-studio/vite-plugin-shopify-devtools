@@ -202,6 +202,37 @@ describe('theme', () => {
   })
 })
 
+describe('standalone panel layout', () => {
+  it('moves, constrains, and restores its persisted bounds without affecting the native dock', async () => {
+    const { ShopifyDevtools } = await import('../src/client.js')
+    const store = new Map<string, string>()
+    vi.stubGlobal('localStorage', { getItem: (key: string) => store.get(key) ?? null, setItem: (key: string, value: string) => void store.set(key, value) })
+    const host = new ShopifyDevtools(); document.body.append(host)
+    const panel = host.shadowRoot?.querySelector('#panel') as HTMLElement
+    panel.getBoundingClientRect = () => {
+      const left = Number.parseFloat(panel.style.left) || 100
+      const top = Number.parseFloat(panel.style.top) || 80
+      return { x: left, y: top, left, top, right: left + 600, bottom: top + 400, width: 600, height: 400, toJSON: () => ({}) }
+    }
+    const header = host.shadowRoot?.querySelector('header') as HTMLElement
+    header.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 120, clientY: 100 }))
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 220, clientY: 180 }))
+    window.dispatchEvent(new MouseEvent('pointerup', { clientX: 220, clientY: 180 }))
+    expect(panel.style.left).toBe('200px')
+    expect(panel.style.top).toBe('160px')
+    expect(JSON.parse(store.get('shopify-devtools:panel-layout') ?? '{}')).toMatchObject({ x: 200, y: 160, width: 600, height: 400 })
+    host.remove()
+
+    store.set('shopify-devtools:panel-layout', JSON.stringify({ x: 30, y: 40, width: 640, height: 360 }))
+    const restored = new ShopifyDevtools(); document.body.append(restored)
+    const restoredPanel = restored.shadowRoot?.querySelector('#panel') as HTMLElement
+    expect(restoredPanel.style.cssText).toContain('left: 30px')
+    expect(restoredPanel.style.cssText).toContain('width: 640px')
+    restored.remove()
+    vi.unstubAllGlobals()
+  })
+})
+
 describe('pages without markers', () => {
   it('lists the sections Shopify renders when the theme is not instrumented', async () => {
     rpcCall.mockClear()

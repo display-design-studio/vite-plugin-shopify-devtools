@@ -9,6 +9,8 @@ const inspectIcon = INSPECT_ICON_SVG.replace('<svg ', '<svg class="inspect-icon"
 const closeIcon = icon('<path d="m7 7 10 10M17 7 7 17"/>')
 const disclosureIcon = icon('<path d="m9 6 6 6-6 6"/>')
 const COLLAPSED_KEY = 'shopify-devtools:collapsed-nodes'
+const PANEL_LAYOUT_KEY = 'shopify-devtools:panel-layout'
+type PanelLayout = { x: number; y: number; width: number; height: number }
 
 export class ShopifyDevtools extends HTMLElement {
   #shadow = this.attachShadow({ mode: 'open' })
@@ -20,6 +22,9 @@ export class ShopifyDevtools extends HTMLElement {
   #query = ''
   #collapsed = this.readCollapsed()
   #treeSignature = ''
+  #resizeObserver?: ResizeObserver
+  #layoutTimer?: ReturnType<typeof setTimeout>
+  #drag?: { pointerId: number; offsetX: number; offsetY: number }
   onInspectPage?: () => void
   #observer = new MutationObserver(() => this.#controller.refresh())
   #themeObserver = new MutationObserver(() => this.syncTheme())
@@ -48,6 +53,17 @@ export class ShopifyDevtools extends HTMLElement {
     this.#shadow.querySelector('#inspect')?.addEventListener('click', () => this.toggleInspector())
     this.#shadow.querySelector('#panel-inspect')?.addEventListener('click', () => { if (this.onInspectPage) this.onInspectPage(); else this.toggleInspector() })
     this.#shadow.querySelector('#close')?.addEventListener('click', () => this.togglePanel(false))
+    const panel = this.#shadow.querySelector<HTMLElement>('#panel')
+    const header = this.#shadow.querySelector<HTMLElement>('header')
+    if (!this.hasAttribute('data-vite-devtools-panel') && panel && header) {
+      this.applyPanelLayout(panel)
+      header.addEventListener('pointerdown', this.#startDrag)
+      if (typeof ResizeObserver !== 'undefined') {
+        this.#resizeObserver = new ResizeObserver(() => this.schedulePanelLayoutSave())
+        this.#resizeObserver.observe(panel)
+      }
+      window.addEventListener('resize', this.#constrainPanel)
+    }
     this.#shadow.querySelector('#search')?.addEventListener('input', (event) => {
       this.#query = (event.currentTarget as HTMLInputElement).value.trim().toLocaleLowerCase()
       this.renderTree()
@@ -64,6 +80,11 @@ export class ShopifyDevtools extends HTMLElement {
     this.#colorScheme?.removeEventListener('change', this.#syncTheme)
     window.removeEventListener('storage', this.#syncTheme)
     this.#unsubscribe?.()
+    this.#resizeObserver?.disconnect()
+    removeEventListener('pointermove', this.#dragPanel)
+    removeEventListener('pointerup', this.#stopDrag)
+    if (this.#layoutTimer) clearTimeout(this.#layoutTimer)
+    window.removeEventListener('resize', this.#constrainPanel)
     this.#controller.clearHighlight()
     for (const event of shopifyEvents) document.removeEventListener(event, this.#refreshEvent)
   }
@@ -81,6 +102,83 @@ export class ShopifyDevtools extends HTMLElement {
     this.#panelOpen = force
     this.#shadow.querySelector('#panel')?.classList.toggle('open', force)
     this.#shadow.querySelector('#toggle')?.setAttribute('aria-pressed', String(force))
+  }
+
+  readPanelLayout(): PanelLayout | undefined {
+    try {
+      const value = JSON.parse(localStorage.getItem(PANEL_LAYOUT_KEY) ?? 'null') as Partial<PanelLayout> | null
+      if (value && [value.x, value.y, value.width, value.height].every((part) => typeof part === 'number' && Number.isFinite(part))) return value as PanelLayout
+    } catch { /* Storage can be unavailable or malformed. */ }
+  }
+
+  constrainedLayout(layout: PanelLayout): PanelLayout {
+    const minimumWidth = Math.min(320, innerWidth - 12)
+    const minimumHeight = Math.min(220, innerHeight - 24)
+    const width = Math.min(Math.max(minimumWidth, layout.width), innerWidth - 12)
+    const height = Math.min(Math.max(minimumHeight, layout.height), innerHeight - 24)
+    return { width, height, x: Math.min(Math.max(6, layout.x), Math.max(6, innerWidth - width - 6)), y: Math.min(Math.max(6, layout.y), Math.max(6, innerHeight - height - 6)) }
+  }
+
+  applyPanelLayout(panel: HTMLElement): void {
+    const stored = this.readPanelLayout()
+    if (!stored) return
+    const layout = this.constrainedLayout(stored)
+    Object.assign(panel.style, { left: `${layout.x}px`, top: `${layout.y}px`, bottom: 'auto', transform: 'none', width: `${layout.width}px`, height: `${layout.height}px` })
+  }
+
+  currentPanelLayout(): PanelLayout | undefined {
+    const panel = this.#shadow.querySelector<HTMLElement>('#panel')
+    if (!panel || this.hasAttribute('data-vite-devtools-panel')) return
+    const rect = panel.getBoundingClientRect()
+    return this.constrainedLayout({ x: rect.left, y: rect.top, width: rect.width, height: rect.height })
+  }
+
+  savePanelLayout(): void {
+    const layout = this.currentPanelLayout()
+    if (!layout) return
+    try { localStorage.setItem(PANEL_LAYOUT_KEY, JSON.stringify(layout)) } catch { /* Storage can be unavailable. */ }
+  }
+
+  schedulePanelLayoutSave(): void {
+    if (this.#layoutTimer) clearTimeout(this.#layoutTimer)
+    this.#layoutTimer = setTimeout(() => this.savePanelLayout(), 100)
+  }
+
+  #startDrag = (event: PointerEvent): void => {
+    if (event.button !== 0 || (event.target as Element).closest('button')) return
+    const panel = this.#shadow.querySelector<HTMLElement>('#panel')
+    if (!panel) return
+    const rect = panel.getBoundingClientRect()
+    this.#drag = { pointerId: event.pointerId, offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top }
+    Object.assign(panel.style, { left: `${rect.left}px`, top: `${rect.top}px`, bottom: 'auto', transform: 'none', width: `${rect.width}px`, height: `${rect.height}px` })
+    addEventListener('pointermove', this.#dragPanel)
+    addEventListener('pointerup', this.#stopDrag)
+    event.preventDefault()
+  }
+
+  #dragPanel = (event: PointerEvent): void => {
+    if (!this.#drag || event.pointerId !== this.#drag.pointerId) return
+    const panel = this.#shadow.querySelector<HTMLElement>('#panel')
+    if (!panel) return
+    const rect = panel.getBoundingClientRect()
+    const layout = this.constrainedLayout({ x: event.clientX - this.#drag.offsetX, y: event.clientY - this.#drag.offsetY, width: rect.width, height: rect.height })
+    panel.style.left = `${layout.x}px`; panel.style.top = `${layout.y}px`
+  }
+
+  #stopDrag = (event: PointerEvent): void => {
+    if (!this.#drag || event.pointerId !== this.#drag.pointerId) return
+    this.#drag = undefined
+    removeEventListener('pointermove', this.#dragPanel)
+    removeEventListener('pointerup', this.#stopDrag)
+    this.savePanelLayout()
+  }
+
+  #constrainPanel = (): void => {
+    const panel = this.#shadow.querySelector<HTMLElement>('#panel')
+    const layout = this.currentPanelLayout()
+    if (!panel || !layout) return
+    Object.assign(panel.style, { left: `${layout.x}px`, top: `${layout.y}px`, width: `${layout.width}px`, height: `${layout.height}px` })
+    this.schedulePanelLayoutSave()
   }
 
   toggleInspector(force = !this.#controller.active): void {
@@ -368,8 +466,8 @@ svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke
 #toolbar svg{width:20px;height:20px;transition:all .3s var(--dock-ease)}#toolbar button:hover svg{transform:scale(1.1)}#toolbar button[aria-pressed=true] svg,#inspect.active svg{transform:scale(1.2)}
 #toolbar button:hover,.icon:hover{background:var(--raised);color:var(--text)}#toolbar button[aria-pressed=true],#inspect.active{background:var(--accent-soft);color:var(--accent-text)}
 .brand{gap:7px;padding:0 10px!important;color:var(--text)!important;font-weight:650}.divider{width:1px;height:20px;background:var(--border);margin:0 2px}#toolbar .icon{width:30px}
-#panel{position:fixed;left:50%;bottom:70px;transform:translate(-50%,12px) scale(.985);width:min(760px,calc(100vw - 24px));height:min(520px,calc(100vh - 110px));display:flex;flex-direction:column;opacity:0;visibility:hidden;background:var(--bg);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-float);overflow:hidden;transition:opacity .5s cubic-bezier(.16,1,.3,1),transform .5s cubic-bezier(.16,1,.3,1),visibility .5s;resize:vertical}#panel.open{opacity:1;visibility:visible;transform:translate(-50%,0) scale(1)}
-header{height:45px;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;padding:0 10px 0 14px;border-bottom:1px solid var(--border);background:var(--panel)}
+#panel{position:fixed;left:50%;bottom:70px;transform:translate(-50%,12px) scale(.985);width:min(760px,calc(100vw - 24px));height:min(520px,calc(100vh - 110px));min-width:min(320px,calc(100vw - 12px));min-height:min(220px,calc(100vh - 24px));max-width:calc(100vw - 12px);max-height:calc(100vh - 24px);display:flex;flex-direction:column;opacity:0;visibility:hidden;background:var(--bg);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-float);overflow:hidden;transition:opacity .5s cubic-bezier(.16,1,.3,1),transform .5s cubic-bezier(.16,1,.3,1),visibility .5s;resize:both}#panel.open{opacity:1;visibility:visible;transform:translate(-50%,0) scale(1)}
+header{height:45px;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;padding:0 10px 0 14px;border-bottom:1px solid var(--border);background:var(--panel);cursor:move;user-select:none}header button{cursor:pointer}
 .title{display:flex;align-items:center;gap:8px}.title strong{font-weight:650}.title .badge{font-size:12px;line-height:16px;font-weight:550;color:var(--muted);background:var(--raised);border-radius:4px;padding:0 6px}
 header .icon{width:30px;height:30px}.header-actions{display:flex;align-items:center;gap:4px}
 .panel-inspect{display:none;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--border);border-radius:8px;color:var(--text);background:var(--panel);cursor:pointer;transition:background .15s var(--ease),border-color .15s var(--ease)}.panel-inspect:hover{background:var(--raised)}.panel-inspect.active{border-color:var(--accent);background:var(--accent-soft)}.panel-inspect span{font-size:13px;font-weight:550}
@@ -389,6 +487,7 @@ dl{display:grid;grid-template-columns:90px minmax(0,1fr);gap:8px 14px;margin:14p
 #toast[data-type=success]{background:var(--ok-bg);border-color:var(--ok-border);color:var(--ok-text)}#toast[data-type=error]{background:var(--err-bg);border-color:var(--err-border);color:var(--err-text)}
 @media(max-width:640px){#toolbar{bottom:10px}#panel{bottom:60px;width:calc(100vw - 12px);height:calc(100vh - 75px)}.workspace{grid-template-columns:1fr;grid-template-rows:minmax(120px,40%) 1fr}nav{border-right:0;border-bottom:1px solid var(--border)}main{padding:12px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+:host([data-vite-devtools-panel]) header{cursor:default}
 `
 
 if (!customElements.get('shopify-liquid-devtools')) customElements.define('shopify-liquid-devtools', ShopifyDevtools)
