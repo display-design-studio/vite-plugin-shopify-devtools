@@ -8,6 +8,8 @@ Development-only source inspection for Shopify Liquid themes, integrated into th
 
 ![Liquid DevTools panel listing the sections, blocks and snippets of a Shopify page](https://raw.githubusercontent.com/display-design-studio/vite-plugin-shopify-devtools/main/docs/devtools-panel.png)
 
+![Short demo of searching and selecting an inferred Liquid snippet](https://raw.githubusercontent.com/display-design-studio/vite-plugin-shopify-devtools/main/docs/devtools-demo.gif)
+
 ## Setup
 
 ```sh
@@ -173,6 +175,24 @@ To add options of your own to the `devtools` setting, spread the preset: `devtoo
 This MVP intentionally excludes Theme Editor iframe integration, Liquid profiling, cart debugging, and variable serialization. A marker opens the component definition/root line, not the exact line of every internal HTML element.
 
 The dock button, logo, and favicon use the full-color Shopify bag (`assets/shopify/shopify-glyph.svg`) on both themes. The black and white glyph variants stay in `assets/shopify/` for monochrome treatments.
+
+## Public API
+
+Before 1.0, the supported package surface is deliberately small: the default `shopifyDevtools` plugin, the runtime presets `shopifyDevtoolsConfig` and `shopifyDevtoolsBranding`, and the type-only `ShopifyDevtoolsOptions`. Files used by the dock renderer and action ship in the tarball for internal dynamic loading but are not export-map subpaths. Diagnostic and instrumentation helpers are implementation details and may change without notice.
+
+## Troubleshooting
+
+### Connection metadata returns 404
+
+The browser is requesting `/__devtools/__connection.json` from Vite, but Vite DevTools is not serving it. Confirm Vite is 8.3 or newer with `vite --version`, that `devtools: shopifyDevtoolsConfig` is at the top level of `defineConfig`, and that the storefront entry is loaded from the same Vite origin shown in the error. Restart both Vite and Shopify CLI after changing the config.
+
+### The component tree is empty
+
+First inspect the browser console for a failed entry script or RPC request. Confirm the rendered section wrapper has a Shopify ID such as `shopify-section-…`, the active template JSON and matching `sections/*.liquid` files exist under the resolved theme root, and the JavaScript entry is present in Vite `build.input` (or set `entry`). Default mode infers blocks and snippets only when their static output is distinctive; use full mode when exact markers are required.
+
+### Vite DevTools says Unauthorized
+
+Read the one-time authorization URL/code from the terminal running Vite, authorize that browser, and reload the storefront. If it returns after a hostname change, cleared site data, or revoked trust, repeat the flow. Do not paste authorization codes or tokens into issues. For controlled automation only, configure matching `clientAuthTokens`; disabling authentication is unsafe on a reachable server.
 
 ## Playground
 

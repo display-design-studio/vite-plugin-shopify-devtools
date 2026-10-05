@@ -1,0 +1,55 @@
+name: Bug report
+description: Report a reproducible Shopify Liquid DevTools problem
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "Never include store passwords, customer data, API keys, DevTools auth tokens, or other credentials."
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Plugin, Vite, Node, Shopify CLI, and browser versions.
+    validations: { required: true }
+  - type: input
+    id: theme-plugin
+    attributes:
+      label: Shopify Vite plugin
+      description: Package name and exact version.
+    validations: { required: true }
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Detection mode
+      options: [Default (inferred), Full copy, Full in-place, CLI wrapper]
+    validations: { required: true }
+  - type: textarea
+    id: entry
+    attributes:
+      label: Vite entry and relevant configuration
+      description: Show build.input, devtools preset, plugin options, and storefront script.
+      render: typescript
+    validations: { required: true }
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Link a public repository or provide minimal theme files and exact steps.
+    validations: { required: true }
+  - type: textarea
+    id: logs
+    attributes:
+      label: Browser and terminal logs
+      description: Remove credentials, tokens, authorization URLs/codes, and private shop data.
+      render: shell
+    validations: { required: true }
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed credentials, store tokens, authorization codes, customer data, and private shop data.
+          required: true
+        - label: I reproduced this with a minimal theme or repository.
+          required: true

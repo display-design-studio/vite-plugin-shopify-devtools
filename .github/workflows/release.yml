@@ -2,56 +2,48 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
+    tags: ['v*']
 
 permissions:
   contents: read
 
 jobs:
   verify:
-    name: Verify release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: 24
+        with: { node-version: 24 }
       - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.2
-      - uses: actions/cache@v4
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-${{ runner.os }}-
-      - name: Require a matching release tag
+        with: { bun-version: 1.4.2 }
+      - name: Require matching tag
         run: |
-          test "${GITHUB_REF_TYPE}" = "tag"
+          test "${GITHUB_REF_TYPE}" = tag
           test "${GITHUB_REF_NAME}" = "v$(node -p "require('./package.json').version")"
       - run: bun install --frozen-lockfile
+      - run: bunx playwright install --with-deps chromium
       - run: bun run check
-      - run: bun run compat:vite
-        env:
-          VITE_VERSION: 8.3.0
-      - run: bun run compat:vite
-        env:
-          VITE_VERSION: 8
+      - run: bun run test:browser
+      - run: bun run benchmark:inference
+      - run: bun run compat:matrix
       - run: git diff --check
-      - name: Check package dry run
-        run: npm_config_cache="$(mktemp -d)" npm pack --dry-run --json
+      - run: mkdir -p release-artifact && npm pack --pack-destination release-artifact
+      - uses: actions/upload-artifact@v4
+        with: { name: npm-package, path: 'release-artifact/*.tgz', if-no-files-found: error }
 
-  release:
-    name: Create GitHub Release
+  publish:
     needs: verify
     runs-on: ubuntu-latest
     environment: release
-    permissions:
-      contents: write
+    permissions: { contents: write, id-token: write }
     steps:
       - uses: actions/checkout@v4
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" --generate-notes --verify-tag
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, registry-url: 'https://registry.npmjs.org' }
+      - run: npm install --global npm@11
+      - uses: actions/download-artifact@v4
+        with: { name: npm-package, path: release-artifact }
+      - run: npm publish release-artifact/*.tgz --access public --provenance
+      - name: Create GitHub Release after npm publish
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: gh release create "${GITHUB_REF_NAME}" release-artifact/*.tgz --generate-notes --verify-tag

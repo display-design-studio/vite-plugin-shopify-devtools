@@ -1,7 +1,7 @@
 {
   "name": "@display-studio/vite-plugin-shopify-devtools",
   "version": "0.3.0",
-  "description": "Source-aware Shopify theme devtools for Vite",
+  "description": "Vite DevTools panel for inspecting Shopify Liquid sections, blocks and snippets",
   "type": "module",
   "license": "MIT",
   "author": "Display Design Studio",
@@ -18,41 +18,36 @@
     "vite",
     "vite-plugin",
     "devtools",
+    "inspector",
     "liquid",
-    "theme"
+    "shopify-theme"
   ],
   "bin": {
     "shopify-devtools": "dist/cli.js"
   },
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    },
-    "./devtools-client": {
-      "types": "./dist/client.d.ts",
-      "import": "./dist/client.js"
-    },
-    "./devtools-action": {
-      "types": "./dist/action.d.ts",
-      "import": "./dist/action.js"
+      "types": "./dist/public.d.ts",
+      "import": "./dist/public.js"
     }
   },
   "files": [
     "dist",
     "assets",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsup src/index.ts src/cli.ts src/client.ts src/action.ts --format esm --dts --clean",
+    "build": "tsup src/public.ts src/cli.ts src/client.ts src/action.ts --format esm --dts --clean",
     "playground:sync": "rsync -a --delete dist assets playground/skeleton-theme/node_modules/@display-studio/vite-plugin-shopify-devtools/",
     "playground": "bun run build && bun run playground:sync && bun run --cwd playground/skeleton-theme dev",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src test vite.config.ts",
     "test": "vitest run",
     "benchmark:inference": "vitest run --config benchmarks/vite.config.ts",
-    "test:browser": "vitest run test/client.test.ts",
+    "test:browser": "bun run build && playwright test",
+    "docs:assets": "bun run build && node scripts/generate-doc-assets.mjs",
     "pack:check": "node scripts/check-pack.mjs",
     "compat:vite": "node scripts/check-compatibility.mjs",
     "compat:matrix": "node scripts/check-compatibility.mjs",
@@ -72,10 +67,14 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",
+    "@playwright/test": "^1.63.0",
     "@types/node": "^24.0.0",
+    "@types/pngjs": "^6.0.5",
     "eslint": "^10.0.0",
+    "gifenc": "^1.0.3",
     "jsdom": "^27.0.0",
     "liquidjs": "^10.30.0",
+    "pngjs": "^7.0.0",
     "tsup": "^8.5.0",
     "typescript": "^6.0.0",
     "typescript-eslint": "^8.0.0",

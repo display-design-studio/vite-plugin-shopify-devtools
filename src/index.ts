@@ -360,6 +360,3 @@ export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): P
     },
   }
 }
-
-export { instrumentLiquid } from './instrument.js'
-export { createThemeMirror } from './mirror.js'

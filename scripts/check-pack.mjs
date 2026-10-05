@@ -9,6 +9,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const packageName = '@display-studio/vite-plugin-shopify-devtools'
 
 const stableFiles = [
+  'CHANGELOG.md',
   'LICENSE',
   'README.md',
   'assets/shopify/shopify-glyph-black.svg',
@@ -20,15 +21,13 @@ const stableFiles = [
   'dist/cli.js',
   'dist/client.d.ts',
   'dist/client.js',
-  'dist/index.d.ts',
-  'dist/index.js',
+  'dist/public.d.ts',
+  'dist/public.js',
   'package.json',
 ]
 const chunkPattern = /^dist\/chunk-[A-Z0-9]{8}\.js$/
 const rootExports = [
-  'absoluteDockUrl', 'createThemeMirror', 'default', 'devtoolsConfigWarning', 'instrumentLiquid',
-  'launchEditor', 'resolveAllowedOrigins', 'resolveEntrypoints', 'resolveThemeFile', 'resolveThemeRoot',
-  'shopifyDevtoolsBranding', 'shopifyDevtoolsConfig', 'viteOrigin', 'viteVersionWarning',
+  'default', 'shopifyDevtoolsBranding', 'shopifyDevtoolsConfig',
 ]
 
 function stage(name, operation) {
@@ -50,14 +49,14 @@ function validateMetadata(manifest) {
   strictEqual(manifest.version, '0.3.0', 'package version differs')
   strictEqual(manifest.type, 'module', 'package must remain ESM')
   strictEqual(manifest.license, 'MIT', 'package license must remain MIT')
-  deepStrictEqual(manifest.files, ['dist', 'assets', 'README.md', 'LICENSE'], 'files allowlist differs')
+  deepStrictEqual(manifest.files, ['dist', 'assets', 'README.md', 'CHANGELOG.md', 'LICENSE'], 'files allowlist differs')
+  strictEqual(manifest.description, 'Vite DevTools panel for inspecting Shopify Liquid sections, blocks and snippets', 'package description differs')
+  deepStrictEqual(manifest.keywords, ['shopify', 'vite', 'vite-plugin', 'devtools', 'inspector', 'liquid', 'shopify-theme'], 'package keywords differ')
   deepStrictEqual(manifest.engines, { node: '^20.19.0 || >=22.12.0' }, 'Node engine differs')
   deepStrictEqual(manifest.peerDependencies, { vite: '^8.3.0' }, 'Vite peer range differs')
   deepStrictEqual(manifest.bin, { 'shopify-devtools': 'dist/cli.js' }, 'CLI map differs')
   deepStrictEqual(manifest.exports, {
-    '.': { types: './dist/index.d.ts', import: './dist/index.js' },
-    './devtools-client': { types: './dist/client.d.ts', import: './dist/client.js' },
-    './devtools-action': { types: './dist/action.d.ts', import: './dist/action.js' },
+    '.': { types: './dist/public.d.ts', import: './dist/public.js' },
   }, 'export map differs')
   strictEqual(manifest.scripts?.prepublishOnly, 'bun run check', 'prepublishOnly guard differs')
   deepStrictEqual(manifest.publishConfig, { access: 'public' }, 'publish configuration differs')
@@ -79,16 +78,14 @@ function validateMetadata(manifest) {
 function validateImports(consumer) {
   const code = [
     `import * as root from ${JSON.stringify(packageName)};`,
-    `import * as action from ${JSON.stringify(`${packageName}/devtools-action`)};`,
-    'globalThis.HTMLElement = class HTMLElement {};',
-    'globalThis.customElements = { get() {}, define() {} };',
-    `const client = await import(${JSON.stringify(`${packageName}/devtools-client`)});`,
-    'console.log(JSON.stringify({ root: Object.keys(root).sort(), action: Object.keys(action).sort(), client: Object.keys(client).sort() }));',
+    'console.log(JSON.stringify({ root: Object.keys(root).sort() }));',
   ].join('\n')
   const result = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '--eval', code], { cwd: consumer, encoding: 'utf8' }))
   deepStrictEqual(result.root, rootExports, 'root runtime exports differ')
-  deepStrictEqual(result.action, ['default'], 'action runtime exports differ')
-  deepStrictEqual(result.client, ['ShopifyDevtools', 'componentTree', 'deepestAtPoint', 'deepestForTarget', 'default', 'resolveTheme'], 'client runtime exports differ')
+  for (const subpath of ['devtools-client', 'devtools-action']) {
+    const unavailable = spawnSync(process.execPath, ['--input-type=module', '--eval', `import ${JSON.stringify(`${packageName}/${subpath}`)}`], { cwd: consumer, encoding: 'utf8' })
+    strictEqual(unavailable.status === 0, false, `${subpath} must not be a public export`)
+  }
 }
 
 function validateCli(consumer) {
