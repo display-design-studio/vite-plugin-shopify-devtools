@@ -51,6 +51,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src test vite.config.ts",
     "test": "vitest run",
+    "benchmark:inference": "vitest run --config benchmarks/vite.config.ts",
     "test:browser": "vitest run test/client.test.ts",
     "pack:check": "node scripts/check-pack.mjs",
     "compat:vite": "node scripts/check-compatibility.mjs",

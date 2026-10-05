@@ -56,7 +56,7 @@ The tree supports standard keyboard navigation: Up and Down move through visible
 
 ### Inferred blocks and snippets
 
-Shopify leaves no trace of blocks and snippets in the HTML it renders, so in the default mode the plugin works them out. The server reads your Liquid, follows the static `{% render 'snippet' %}` calls and the blocks of each section, and records the markup each file emits first (tag, static classes, static `id` and `data-*` attributes). The panel then looks for that markup inside the section on the page and nests what it finds. Inferred entries are labelled **inferred** and carry a confidence badge: **high** for Shopify runtime identity or a distinctive static attribute, **medium** for multiple static classes, and **low** for a single static class. Select an entry to see the evidence behind its rating.
+Shopify leaves no trace of blocks and snippets in the HTML it renders, so in the default mode the plugin works them out. The server reads your Liquid, follows the static `{% render 'snippet' %}` calls and the blocks of each section, and records the markup each file emits first (tag, static classes, static `id` and `data-*` attributes). The panel then looks for that markup inside the section on the page and nests what it finds. Ordered sibling roots are claimed as one component, including children below any of those roots. A tag-only root is accepted only when its complete pattern is unique (or agrees with known instance/call-site cardinality). Inferred entries are labelled **inferred** and carry a confidence badge: **high** for Shopify runtime identity, distinctive static attributes, or a multi-root sequence; **medium** for multiple static classes or a unique tag-only root; and **low** for a single static class. Select an entry to see the evidence behind its rating.
 
 When an expected snippet cannot be identified, an expandable report above the component tree shows its file, static render call site, and the reason: an unrecognisable root, no matching DOM element, or an ambiguous match. Repeated diagnostics are deduplicated. A snippet with no recognisable root still remains transparent to inference, so recognisable children rendered by it can appear in the caller's scope.
 
@@ -70,12 +70,14 @@ Changes to template JSON, section groups, sections, blocks, and snippets invalid
 
 It is a best effort, tuned to prefer showing nothing over showing something wrong:
 
-- Snippets that print no element of their own, or whose first element has no class or attribute to recognise it by, are not shown.
+- Snippets that print no element of their own, and non-unique generic root patterns, are not shown.
 - Two different components with identical markup inside the same parent are left out.
 - Markup that JavaScript rewrites after the page loads (Vue or React islands, for example) cannot be matched.
 - Dynamic parts of a class list are ignored: `class="card card--{{ size }}"` is recognised by `card`.
 
 Use the full mode when you need the exact tree. On a page served in full mode you can also measure how close the inference gets by running `await shopifyDevtools.compareInference()` in the browser console: it returns precision, recall, and the entries that were wrongly added or missed.
+
+Run `bun run benchmark:inference` for the offline Dawn, Horizon, and Skeleton home/product/collection matrix. It executes section resolution and inference against pinned, store-data-free fixtures and checks per-page precision plus aggregate recall. Fixture provenance and licenses are recorded in `benchmarks/fixtures/README.md`.
 
 ### Full mode
 

@@ -31,6 +31,18 @@ beforeAll(async () => {
 afterAll(() => nativePanel.remove())
 
 describe('browser panel', () => {
+  it('debounces refresh bursts and cancels a pending refresh on disconnect', () => {
+    vi.useFakeTimers()
+    const refresh = vi.spyOn(getInspectorController(), 'refresh')
+    const host = new client.ShopifyDevtools()
+    host.scheduleRefresh(); host.scheduleRefresh(); host.scheduleRefresh()
+    vi.advanceTimersByTime(49); expect(refresh).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1); expect(refresh).toHaveBeenCalledTimes(1)
+    refresh.mockClear(); host.scheduleRefresh(); host.disconnectedCallback()
+    vi.advanceTimersByTime(50); expect(refresh).not.toHaveBeenCalled()
+    refresh.mockRestore(); vi.useRealTimers()
+  })
+
   it('mounts inside the native Vite DevTools custom-render panel', () => {
     const host = nativePanel.querySelector('shopify-liquid-devtools')
     expect(host).toBeTruthy()

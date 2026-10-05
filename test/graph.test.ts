@@ -16,18 +16,18 @@ async function theme(files: Record<string, string>): Promise<string> {
 describe('analyze', () => {
   it('reads the root element, keeping only the static class tokens', () => {
     const graph = analyze('<div class="card card--{{ size }} {{ extra }} wide" id="x" data-k="1" data-v="{{ v }}">{% render "icon" %}</div>')
-    expect(graph.roots).toEqual([{ tag: 'div', classes: ['card', 'wide'], attrs: { id: 'x', 'data-k': '1' } }])
+    expect(graph.roots).toEqual([[{ tag: 'div', classes: ['card', 'wide'], attrs: { id: 'x', 'data-k': '1' } }]])
     expect(graph.renders).toEqual(['icon'])
     expect(graph.renderCalls).toEqual([{ name: 'icon', file: '', line: 1 }])
   })
 
   it('looks through Liquid control flow but not into elements, and reads svg', () => {
     const graph = analyze('{% if a %}<svg class="i"></svg>{% else %}<span class="j"><b class="inner"></b></span>{% endif %}')
-    expect(graph.roots.map((root) => `${root.tag}.${root.classes[0]}`)).toEqual(['svg.i', 'span.j'])
+    expect(graph.roots.map((pattern) => `${pattern[0].tag}.${pattern[0].classes[0]}`)).toEqual(['svg.i', 'span.j'])
   })
 
-  it('has no usable root when the markup is generic or missing', () => {
-    expect(analyze('<div><p class="a"></p></div>').roots).toEqual([])
+  it('keeps tag-only roots but has no root for text-only output', () => {
+    expect(analyze('<div><p class="a"></p></div>').roots).toEqual([[{ tag: 'div', classes: [], attrs: {} }]])
     expect(analyze('{{ value }} EUR').roots).toEqual([])
   })
 
@@ -40,7 +40,7 @@ describe('analyze', () => {
   {% endcase %}
 {% endfor %}`)
     expect(graph.renders).toEqual(['top'])
-    expect(graph.slots.map((slot) => [slot.types, slot.roots[0]?.classes, slot.renders])).toEqual([[['a'], ['a'], ['in-a']], [['b', 'c'], ['b'], []]])
+    expect(graph.slots.map((slot) => [slot.types, slot.roots[0]?.[0].classes, slot.renders])).toEqual([[['a'], ['a'], ['in-a']], [['b', 'c'], ['b'], []]])
     expect(graph.slots[0].renderCalls[0]).toMatchObject({ name: 'in-a', line: 4 })
   })
 
@@ -62,13 +62,22 @@ describe('analyze', () => {
 {% endfor %}`)
     expect(graph.staticBlocks).toEqual([{ type: '_heading', id: 'fixed-heading', line: 1 }])
     expect(graph.slots).toHaveLength(1)
-    expect(graph.slots[0]).toMatchObject({ types: ['text'], roots: [{ tag: 'p', classes: ['nested'], attrs: {} }] })
+    expect(graph.slots[0]).toMatchObject({ types: ['text'], roots: [[{ tag: 'p', classes: ['nested'], attrs: {} }]] })
   })
 
   it('records Shopify block identity attributes even on otherwise generic roots', () => {
     const inline = analyze(`{% for block in section.blocks %}<div {{ block.shopify_attributes }}></div>{% endfor %}`)
-    expect(inline.slots[0]).toMatchObject({ roots: [], shopifyAttributes: true })
-    expect(analyze(`<div {{ block.shopify_attributes }}></div>`)).toMatchObject({ roots: [], shopifyAttributes: true })
+    expect(inline.slots[0]).toMatchObject({ roots: [[{ tag: 'div', classes: [], attrs: {} }]], shopifyAttributes: true })
+    expect(analyze(`<div {{ block.shopify_attributes }}></div>`)).toMatchObject({ roots: [[{ tag: 'div', classes: [], attrs: {} }]], shopifyAttributes: true })
+  })
+
+  it('distinguishes sibling sequences from Liquid branch alternatives', () => {
+    expect(analyze('<h2 class="title"></h2><div></div>').roots).toEqual([[
+      { tag: 'h2', classes: ['title'], attrs: {} }, { tag: 'div', classes: [], attrs: {} },
+    ]])
+    expect(analyze('{% if x %}<article></article>{% else %}<aside></aside>{% endif %}').roots).toEqual([
+      [{ tag: 'article', classes: [], attrs: {} }], [{ tag: 'aside', classes: [], attrs: {} }],
+    ])
   })
 })
 

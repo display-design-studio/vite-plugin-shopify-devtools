@@ -24,9 +24,10 @@ export class ShopifyDevtools extends HTMLElement {
   #treeSignature = ''
   #resizeObserver?: ResizeObserver
   #layoutTimer?: ReturnType<typeof setTimeout>
+  #refreshTimer?: ReturnType<typeof setTimeout>
   #drag?: { pointerId: number; offsetX: number; offsetY: number }
   onInspectPage?: () => void
-  #observer = new MutationObserver(() => this.#controller.refresh())
+  #observer = new MutationObserver(() => this.scheduleRefresh())
   #themeObserver = new MutationObserver(() => this.syncTheme())
   #colorScheme = window.matchMedia?.('(prefers-color-scheme: dark)')
 
@@ -84,6 +85,7 @@ export class ShopifyDevtools extends HTMLElement {
     removeEventListener('pointermove', this.#dragPanel)
     removeEventListener('pointerup', this.#stopDrag)
     if (this.#layoutTimer) clearTimeout(this.#layoutTimer)
+    if (this.#refreshTimer) clearTimeout(this.#refreshTimer)
     window.removeEventListener('resize', this.#constrainPanel)
     this.#controller.clearHighlight()
     for (const event of shopifyEvents) document.removeEventListener(event, this.#refreshEvent)
@@ -96,7 +98,12 @@ export class ShopifyDevtools extends HTMLElement {
     this.dataset.theme = resolveTheme(this.#themeSource, this.#colorScheme?.matches ?? true)
   }
 
-  #refreshEvent = (): void => this.#controller.refresh()
+  #refreshEvent = (): void => this.scheduleRefresh()
+
+  scheduleRefresh(): void {
+    if (this.#refreshTimer) clearTimeout(this.#refreshTimer)
+    this.#refreshTimer = setTimeout(() => { this.#refreshTimer = undefined; this.#controller.refresh() }, 50)
+  }
 
   togglePanel(force = !this.#panelOpen): void {
     this.#panelOpen = force

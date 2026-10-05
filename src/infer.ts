@@ -1,4 +1,4 @@
-import type { Expectation, Signature } from './graph.js'
+import type { Expectation, RootPattern, Signature } from './graph.js'
 import type { ComponentNode } from './inspector.js'
 
 export interface InferContext {
@@ -17,7 +17,11 @@ export interface MissingSnippet {
 }
 
 const signatureWeight = (signature: Signature): number => signature.classes.length + 2 * Object.keys(signature.attrs).length
-const weightOf = (expectation: Expectation): number => Math.max(0, ...expectation.roots.map(signatureWeight))
+const patternsOf = (expectation: Expectation): RootPattern[] => {
+  const roots = expectation.roots
+  return roots.length && !Array.isArray(roots[0]) ? [(roots as Signature[])] : roots as RootPattern[]
+}
+const weightOf = (expectation: Expectation): number => Math.max(0, ...patternsOf(expectation).map((pattern) => pattern.reduce((sum, root) => sum + signatureWeight(root), 0)))
 const sizeOf = (expectation: Expectation): number => expectation.children.reduce((total, child) => total + 1 + sizeOf(child), 0)
 
 /** More specific markup wins an element; between equals, the component that contains more explains more. */
@@ -31,8 +35,30 @@ export function matchesSignature(element: Element, signature: Signature): boolea
 
 const inDocumentOrder = (a: Element, b: Element): number => a === b ? 0 : a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1
 
-function findMatches(scope: Element, expectation: Expectation, claimed: Set<Element>): Element[] {
-  const found = new Set<Element>()
+interface ElementIndex {
+  byTag: Map<string, Element[]>
+  all: Element[]
+  query(scopes: Element[], tag: string): Element[]
+}
+
+function createIndex(scope: Element): ElementIndex {
+  const byTag = new Map<string, Element[]>()
+  const all = [...scope.querySelectorAll('*')]
+  for (const element of all) {
+    const list = byTag.get(element.localName) ?? []
+    list.push(element); byTag.set(element.localName, list)
+  }
+  const cache = new WeakMap<Element, Map<string, Element[]>>()
+  return { byTag, all, query(scopes, tag) {
+    if (scopes.length !== 1) return (byTag.get(tag) ?? []).filter((element) => scopes.some((item) => item !== element && item.contains(element)))
+    let tags = cache.get(scopes[0]); if (!tags) { tags = new Map(); cache.set(scopes[0], tags) }
+    const cached = tags.get(tag); if (cached) return cached
+    const found = (byTag.get(tag) ?? []).filter((element) => scopes[0] !== element && scopes[0].contains(element)); tags.set(tag, found); return found
+  } }
+}
+
+function findMatches(scopes: Element[], expectation: Expectation, claimed: Set<Element>, index: ElementIndex): Element[][] {
+  const found: Element[][] = []
   const matchesIdentity = (element: Element): boolean => {
     const raw = element.getAttribute('data-shopify-editor-block')
     try {
@@ -40,29 +66,47 @@ function findMatches(scope: Element, expectation: Expectation, claimed: Set<Elem
       return !!expectation.instances?.some((instance) => instance.id === identity.id && instance.type === identity.type)
     } catch { return false }
   }
-  for (const tag of new Set(expectation.roots.map((signature) => signature.tag))) {
-    for (const element of scope.getElementsByTagName(tag)) {
-      if (!claimed.has(element) && expectation.roots.some((signature) => matchesSignature(element, signature))
-        && (!expectation.shopifyAttributes || !element.hasAttribute('data-shopify-editor-block') || matchesIdentity(element))) found.add(element)
+  for (const pattern of patternsOf(expectation)) {
+    const first = pattern[0]
+    if (!first) continue
+    for (const element of index.query(scopes, first.tag)) {
+      if (claimed.has(element) || !matchesSignature(element, first)) continue
+      const group = [element]
+      let next: Element | null = element
+      for (const signature of pattern.slice(1)) {
+        next = next.nextElementSibling
+        if (!next || !matchesSignature(next, signature) || claimed.has(next)) { next = null; break }
+        group.push(next)
+      }
+      if (next && (!expectation.shopifyAttributes || !element.hasAttribute('data-shopify-editor-block') || matchesIdentity(element))) found.push(group)
     }
   }
   if (expectation.shopifyAttributes) {
-    for (const element of scope.querySelectorAll('[data-shopify-editor-block]')) {
+    for (const element of index.all.filter((candidate) => scopes.some((scope) => scope !== candidate && scope.contains(candidate)))) {
       if (claimed.has(element)) continue
-      if (matchesIdentity(element)) found.add(element)
+      if (element.hasAttribute('data-shopify-editor-block') && matchesIdentity(element)) found.push([element])
     }
   }
-  return [...found]
+  const unique = found.filter((group, at) => found.findIndex((other) => other.length === group.length && other.every((item, index) => item === group[index])) === at)
+  const generic = patternsOf(expectation).every((pattern) => pattern.every((root) => signatureWeight(root) === 0))
+  if (generic) {
+    const cardinality = expectation.instances?.length || expectation.callSites?.length
+    if (unique.length !== (cardinality ?? 1)) return []
+  }
+  return unique
 }
 
-function confidenceFor(expectation: Expectation, element: Element): { level: InferenceConfidence, reason: string } {
+function confidenceFor(expectation: Expectation, roots: Element[]): { level: InferenceConfidence, reason: string } {
+  const element = roots[0]
   if (expectation.shopifyAttributes && element.hasAttribute('data-shopify-editor-block')) {
     return { level: 'high', reason: 'Matched Shopify block ID and type.' }
   }
-  const signature = expectation.roots.find((candidate) => matchesSignature(element, candidate))
+  const signature = patternsOf(expectation).flat().find((candidate) => matchesSignature(element, candidate))
+  if (roots.length > 1) return { level: 'high', reason: `Matched an ordered sequence of ${roots.length} sibling roots.` }
   const attributes = signature ? Object.keys(signature.attrs) : []
   if (attributes.length) return { level: 'high', reason: `Matched distinctive static ${attributes.length === 1 ? 'attribute' : 'attributes'}: ${attributes.join(', ')}.` }
   if ((signature?.classes.length ?? 0) > 1) return { level: 'medium', reason: `Matched ${signature!.classes.length} static classes.` }
+  if (signature && signatureWeight(signature) === 0) return { level: 'medium', reason: 'Matched a unique tag-only root in the expected scope.' }
   return { level: 'low', reason: `Matched one static class: ${signature?.classes[0] ?? 'unknown'}.` }
 }
 
@@ -80,6 +124,10 @@ function reportMissing(context: InferContext, expectation: Expectation, reason: 
  * components they may contain. It guesses from static markup alone, so every node is marked as inferred.
  */
 export function inferNodes(scope: Element, expectations: Expectation[], context: InferContext, parent: ComponentNode | null, claimed: Set<Element> = new Set()): ComponentNode[] {
+  return inferInScopes([scope], expectations, context, parent, claimed, createIndex(scope))
+}
+
+function inferInScopes(scopes: Element[], expectations: Expectation[], context: InferContext, parent: ComponentNode | null, claimed: Set<Element>, index: ElementIndex): ComponentNode[] {
   const matchable: Expectation[] = []
   const collect = (items: Expectation[]): void => {
     for (const expectation of items) {
@@ -88,17 +136,18 @@ export function inferNodes(scope: Element, expectations: Expectation[], context:
     }
   }
   collect(expectations)
-  const owners = new Map<Element, Expectation>()
-  const ambiguous = new Set<Element>()
+  const owners = new Map<Element, { expectation: Expectation, group: Element[] }>()
+  const ambiguous = new Set<Element[]>()
   const ambiguousExpectations = new Set<Expectation>()
   for (const expectation of matchable) {
-    for (const element of findMatches(scope, expectation, claimed)) {
-      const current = owners.get(element)
-      if (!current) owners.set(element, expectation)
-      else if (better(expectation, current)) { owners.set(element, expectation); ambiguous.delete(element) }
+    for (const group of findMatches(scopes, expectation, claimed, index)) {
+      const conflicts = group.map((element) => owners.get(element)).filter((item): item is NonNullable<typeof item> => !!item)
+      const current = conflicts[0]
+      if (!current) for (const element of group) owners.set(element, { expectation, group })
+      else if (better(expectation, current.expectation)) { for (const element of current.group) owners.delete(element); for (const element of group) owners.set(element, { expectation, group }) }
       // Two different components with identical markup: better to show nothing than to guess wrong.
-      else if (!better(current, expectation) && (current.file !== expectation.file || current.label !== expectation.label)) {
-        ambiguous.add(element); ambiguousExpectations.add(current); ambiguousExpectations.add(expectation)
+      else if (!better(current.expectation, expectation) && (current.expectation.file !== expectation.file || current.expectation.label !== expectation.label)) {
+        ambiguous.add(current.group); ambiguous.add(group); ambiguousExpectations.add(current.expectation); ambiguousExpectations.add(expectation)
       }
     }
   }
@@ -107,15 +156,16 @@ export function inferNodes(scope: Element, expectations: Expectation[], context:
   // rendered by a card is not mistaken for a button the section rendered itself.
   const seen = new Map<Expectation, number>()
   const nodes: ComponentNode[] = []
-  for (const [element, expectation] of [...owners].sort(([a], [b]) => inDocumentOrder(a, b))) {
-    if (claimed.has(element) || ambiguous.has(element)) continue
-    claimed.add(element)
-    const index = seen.get(expectation) ?? 0
-    seen.set(expectation, index + 1)
-    const instance = expectation.instances?.[index]
-    const callSite = expectation.callSites?.[index] ?? expectation.callSites?.[0]
+  const groups = [...new Set([...owners.values()])].sort((a, b) => inDocumentOrder(a.group[0], b.group[0]))
+  for (const { group, expectation } of groups) {
+    if (group.some((element) => claimed.has(element)) || ambiguous.has(group)) continue
+    for (const element of group) claimed.add(element)
+    const instanceIndex = seen.get(expectation) ?? 0
+    seen.set(expectation, instanceIndex + 1)
+    const instance = expectation.instances?.[instanceIndex]
+    const callSite = expectation.callSites?.[instanceIndex] ?? expectation.callSites?.[0]
     const id = `${expectation.kind}:${expectation.file}${expectation.label ? `:${expectation.label}` : ''}`
-    const confidence = confidenceFor(expectation, element)
+    const confidence = confidenceFor(expectation, group)
     const node: ComponentNode = {
       id,
       kind: expectation.kind,
@@ -123,7 +173,7 @@ export function inferNodes(scope: Element, expectations: Expectation[], context:
       line: expectation.line,
       start: null,
       end: null,
-      roots: [element],
+      roots: group,
       parent,
       children: [],
       occurrence: context.occurrence(id),
@@ -140,7 +190,7 @@ export function inferNodes(scope: Element, expectations: Expectation[], context:
       app: expectation.app,
       appType: expectation.appType,
     }
-    node.children = inferNodes(element, expectation.children, context, node, claimed)
+    node.children = inferInScopes(group, expectation.children, context, node, claimed, index)
     nodes.push(node)
   }
   for (const expectation of matchable) {

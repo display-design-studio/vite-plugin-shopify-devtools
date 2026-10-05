@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { Expectation, Signature } from '../src/graph.js'
 import { inferNodes, matchesSignature } from '../src/infer.js'
 
 const signature = (tag: string, classes: string[] = [], attrs: Record<string, string> = {}): Signature => ({ tag, classes, attrs })
-const snippet = (file: string, roots: Signature[], children: Expectation[] = []): Expectation => ({ kind: 'snippet', file: `snippets/${file}.liquid`, line: 1, roots, children })
+const snippet = (file: string, roots: Expectation['roots'], children: Expectation[] = []): Expectation => ({ kind: 'snippet', file: `snippets/${file}.liquid`, line: 1, roots, children })
 const run = (html: string, expectations: Expectation[]) => {
   const scope = document.createElement('div')
   scope.innerHTML = html
@@ -59,6 +59,28 @@ describe('inferNodes', () => {
     const nodes = run('<i class="x"></i><i class="x"></i>', [snippet('x', [signature('i', ['x'])])])
     expect(nodes.map((node) => node.occurrence)).toEqual([0, 1])
     expect(nodes.every((node) => node.inferred && node.parent === null)).toBe(true)
+  })
+
+  it('claims ordered sibling roots atomically and finds children in every root', () => {
+    const multi: Expectation = { ...snippet('multi', [], [snippet('leaf', [signature('i', ['leaf'])])]), roots: [[signature('header', ['head']), signature('main')]] }
+    const nodes = run('<header class="head"><i class="leaf"></i></header><main><i class="leaf"></i></main>', [multi])
+    expect(nodes).toHaveLength(1)
+    expect(nodes[0].roots.map((root) => root.localName)).toEqual(['header', 'main'])
+    expect(files(nodes[0].children)).toEqual(['snippets/leaf.liquid', 'snippets/leaf.liquid'])
+    expect(nodes[0].inferenceReason).toContain('2 sibling roots')
+  })
+
+  it('accepts a unique tag-only root and omits ambiguous generic roots', () => {
+    expect(run('<aside></aside>', [snippet('unique', [[signature('aside')]])])[0]).toMatchObject({ inferenceConfidence: 'medium' })
+    expect(run('<aside></aside><aside></aside>', [snippet('ambiguous', [[signature('aside')]])])).toEqual([])
+  })
+
+  it('builds the descendant index once and shares it with recursive inference', () => {
+    const scope = document.createElement('div')
+    scope.innerHTML = '<article class="outer"><i class="leaf"></i></article>'.repeat(1000)
+    const query = vi.spyOn(scope, 'querySelectorAll')
+    inferNodes(scope, [snippet('outer', [signature('article', ['outer'])], [snippet('leaf', [signature('i', ['leaf'])])])], { occurrence: () => 0 }, null)
+    expect(query).toHaveBeenCalledTimes(1)
   })
 
   it('numbers block instances in order from the template JSON', () => {

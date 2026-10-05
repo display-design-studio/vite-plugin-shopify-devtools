@@ -10,6 +10,9 @@ export interface Signature {
   attrs: Record<string, string>
 }
 
+/** One possible ordered sequence of top-level elements emitted by a Liquid file. */
+export type RootPattern = Signature[]
+
 export interface BlockInstance {
   id: string
   type: string
@@ -28,7 +31,8 @@ export interface Expectation {
   file: string
   line: number
   label?: string
-  roots: Signature[]
+  /** New payloads contain patterns; the flat form is accepted while older dev servers reconnect. */
+  roots: RootPattern[] | Signature[]
   children: Expectation[]
   /** Blocks of this type in the template JSON, in order: the n-th DOM match is the n-th instance. */
   instances?: BlockInstance[]
@@ -47,7 +51,7 @@ interface RenderCall extends SourceReference { name: string }
 
 interface Slot {
   types: string[] | null
-  roots: Signature[]
+  roots: RootPattern[]
   renders: string[]
   renderCalls: RenderCall[]
   line: number
@@ -55,7 +59,7 @@ interface Slot {
 }
 
 export interface FileGraph {
-  roots: Signature[]
+  roots: RootPattern[]
   renders: string[]
   renderCalls: RenderCall[]
   slots: Slot[]
@@ -68,6 +72,7 @@ const DYNAMIC = '\u0000'
 const NAME = /^[A-Za-z0-9_.-]+$/
 const MAX_DEPTH = 5
 const MAX_ROOTS = 4
+const MAX_PATTERNS = 8
 
 type Node = AstNode & { children?: Node[]; attributes?: Node[]; value?: unknown; markup?: unknown; blockStartPosition?: { start: number; end: number } }
 
@@ -98,19 +103,28 @@ function signatureOf(element: Node): Signature | undefined {
   return signature
 }
 
-/** The elements a file emits at its top level, looking through Liquid control flow but not into other elements. */
-function topElements(children: Node[] = []): Node[] {
-  return children.flatMap((child) => {
-    if (isElement(child)) return [child]
-    if (child.type === 'LiquidTag' || child.type === 'LiquidBranch') return topElements(child.children)
-    return []
-  })
+/** Ordered top-level element sequences. Liquid branches are alternatives, siblings are concatenated. */
+function rootElements(children: Node[] = []): Node[][] {
+  let patterns: Node[][] = [[]]
+  for (const child of children) {
+    let choices: Node[][] = [[]]
+    if (isElement(child)) choices = [[child]]
+    else if (child.type === 'LiquidTag') {
+      const branches = (child.children ?? []).filter((node) => node.type === 'LiquidBranch')
+      choices = branches.length ? branches.flatMap((branch) => rootElements(branch.children)) : rootElements(child.children)
+    } else if (child.type === 'LiquidBranch') choices = rootElements(child.children)
+    patterns = patterns.flatMap((prefix) => choices.map((choice) => [...prefix, ...choice].slice(0, MAX_ROOTS))).slice(0, MAX_PATTERNS)
+  }
+  return patterns
 }
 
-const usableRoots = (elements: Node[]): Signature[] => elements
-  .map(signatureOf)
-  .filter((signature): signature is Signature => !!signature && signatureWeight(signature) > 0)
-  .slice(0, MAX_ROOTS)
+const rootPatterns = (children: Node[] = []): RootPattern[] => {
+  const seen = new Set<string>()
+  return rootElements(children).map((elements) => elements.map(signatureOf).filter((signature): signature is Signature => !!signature).slice(0, MAX_ROOTS))
+    .filter((pattern) => pattern.length > 0)
+    .filter((pattern) => { const key = JSON.stringify(pattern); if (seen.has(key)) return false; seen.add(key); return true })
+    .slice(0, MAX_PATTERNS)
+}
 
 const printsShopifyAttributes = (elements: Node[], variable: string, source: string): boolean => elements.some((element) => {
   const start = element.position?.start
@@ -172,22 +186,22 @@ export function analyze(source: string): FileGraph {
     if (!caseTag) {
       const renderCalls: RenderCall[] = []
       collect(body, renderCalls)
-      const elements = topElements(body)
-      return [{ types: null, roots: usableRoots(elements), renders: unique(renderCalls.map((call) => call.name)), renderCalls, line: at(loop), shopifyAttributes: printsShopifyAttributes(elements, variable, source) }]
+      const elements = rootElements(body).flat()
+      return [{ types: null, roots: rootPatterns(body), renders: unique(renderCalls.map((call) => call.name)), renderCalls, line: at(loop), shopifyAttributes: printsShopifyAttributes(elements, variable, source) }]
     }
     return (caseTag.children ?? []).filter((branch) => branch.name === 'when').map((branch) => {
       const renderCalls: RenderCall[] = []
       collect(branch.children, renderCalls)
       const types = (Array.isArray(branch.markup) ? branch.markup as Node[] : []).map((value) => String(value.value)).filter((value) => NAME.test(value))
-      const elements = topElements(branch.children)
-      return { types, roots: usableRoots(elements), renders: unique(renderCalls.map((call) => call.name)), renderCalls, line: at(branch), shopifyAttributes: printsShopifyAttributes(elements, variable, source) }
+      const elements = rootElements(branch.children).flat()
+      return { types, roots: rootPatterns(branch.children), renders: unique(renderCalls.map((call) => call.name)), renderCalls, line: at(branch), shopifyAttributes: printsShopifyAttributes(elements, variable, source) }
     })
   }
 
   const renderCalls: RenderCall[] = []
   collect(ast.children, renderCalls)
-  const rootElements = topElements(ast.children)
-  return { roots: usableRoots(rootElements), renders: unique(renderCalls.map((call) => call.name)), renderCalls, slots, contentForBlocks, staticBlocks, shopifyAttributes: printsShopifyAttributes(rootElements, 'block', source) }
+  const top = rootElements(ast.children)
+  return { roots: rootPatterns(ast.children), renders: unique(renderCalls.map((call) => call.name)), renderCalls, slots, contentForBlocks, staticBlocks, shopifyAttributes: printsShopifyAttributes(top.flat(), 'block', source) }
 }
 
 const cache = new Map<string, { mtime: number; graph: FileGraph }>()
