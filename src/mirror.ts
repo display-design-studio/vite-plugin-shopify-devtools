@@ -5,6 +5,7 @@ import chokidar, { type FSWatcher } from 'chokidar'
 import { instrumentLiquid } from './instrument.js'
 
 export const THEME_DIRECTORIES = ['assets', 'blocks', 'config', 'layout', 'locales', 'sections', 'snippets', 'templates'] as const
+export const THEME_ROOT_FILES = ['shopify.theme.toml'] as const
 
 export interface ThemeMirror { root: string; close(): Promise<void> }
 
@@ -26,6 +27,14 @@ export async function createThemeMirror(themeRoot: string): Promise<ThemeMirror>
     const source = path.join(themeRoot, directory)
     try {
       if ((await stat(source)).isDirectory()) { await cp(source, path.join(root, directory), { recursive: true }); watched.push(source) }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+  }
+  for (const filename of THEME_ROOT_FILES) {
+    const source = path.join(themeRoot, filename)
+    try {
+      if ((await stat(source)).isFile()) { await cp(source, path.join(root, filename)); watched.push(source) }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
