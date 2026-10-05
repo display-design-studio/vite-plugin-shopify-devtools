@@ -39,6 +39,21 @@ That is all: keep running your project the way you already do (Vite alongside `s
 
 Open **Shopify Liquid** from the Vite DevTools dock. Use **Inspect page** in the panel header or the dedicated inspector action in the dock to pick a rendered component. Production builds are untouched because both the plugin and DevTools integration use `apply: 'serve'`, and source Liquid files are never rewritten.
 
+### Authorizing the browser
+
+On the first connection, Vite DevTools may show **Unauthorized** while the terminal running Vite prints a one-time authorization code and link. Enter that code in the browser (or open the link) and reload the storefront if it does not reconnect immediately. The trusted token is persisted in the browser, so this is normally a one-time step for that storefront and browser. A Vite DevTools update, cleared site data, a different hostname, or an explicitly revoked trust can invalidate it; repeat the terminal-code flow when that happens.
+
+For unattended browser tests or other controlled automation, configure a static secret and give the same token to the client using the mechanism provided by your runner:
+
+```ts
+devtools: {
+  ...shopifyDevtoolsConfig,
+  clientAuthTokens: [process.env.VITE_DEVTOOLS_AUTH_TOKEN!],
+}
+```
+
+Keep the token out of source control and CI logs. `clientAuth: false` also removes the prompt, but it allows any browser that can reach the Vite server to use DevTools server and filesystem capabilities. Avoid it whenever the server is exposed beyond a fully trusted local environment.
+
 ### Navigating the component tree
 
 Use the search field to filter by component name, theme-relative path, kind, JSON section key or name, and the **Template** or **Section group** badge. Matching entries keep their ancestors visible and expand their paths temporarily. Disclosure arrows collapse branches, and that state is saved for the current storefront origin.
@@ -147,7 +162,9 @@ The plugin only inspects the Shopify side of your theme (sections, blocks, snipp
   })
   ```
 
-- **Vue DevTools 9 (beta)** shares the Vite DevTools dock with this plugin and its entry shows up there, but its panel cannot reach the page yet. The panel is an iframe served by Vite while the page comes from Shopify, and Vue's connection between the two only accepts the same origin, so the component tree stays empty. Use version 8 for now. The plugin does rewrite root-relative iframe dock URLs to point at the Vite server, which makes other iframe-based docks work on a Shopify-hosted page.
+- **Vue DevTools 9.0.0-beta.1** has been checked against the shared Vite DevTools dock: it registers its iframe entry and this plugin rewrites the root-relative panel URL to the Vite server. It is not declared supported yet because that beta exposes no explicit host-origin allowlist for the iframe-to-storefront connection, so the component tree remains empty when Shopify serves the page from another origin. Use version 8 for now.
+
+The URL rewrite is generic for iframe docks: a root-relative URL (including its query string and fragment) is moved to the Vite origin, whether the dock was registered before or after Shopify DevTools. Protocol-relative and already absolute URLs, actions, groups, and other dock types are left unchanged. This makes iframe plugins whose own transport supports the Shopify host origin usable without plugin-specific integration.
 
 To add options of your own to the `devtools` setting, spread the preset: `devtools: { ...shopifyDevtoolsConfig, clientAuth: false }`.
 

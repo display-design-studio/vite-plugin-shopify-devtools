@@ -35,4 +35,36 @@ jobs:
       - run: bun run build
       - run: bun run compat:vite
         env:
+          COMPAT_CORE_ONLY: 1
+          VITE_VERSION: ${{ matrix.vite }}
+
+  shopify-plugins:
+    name: Node 24 / ${{ matrix.plugin }} / Vite ${{ matrix.vite }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin:
+          - vite-plugin-shopify@4.1.2
+          - vite-plugin-shopify@5.0.0
+          - vite-plugin-shopify-theme@0.1.2
+        vite: [8.3.0, 8]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - run: bun run compat:vite
+        env:
+          THEME_PLUGIN: ${{ matrix.plugin }}
           VITE_VERSION: ${{ matrix.vite }}

@@ -1,7 +1,9 @@
 import { mkdir, mkdtemp, realpath, writeFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
+import vueDevTools from 'vite-plugin-vue-devtools'
 import shopifyDevtools, { absoluteDockUrl, devtoolsConfigWarning, resolveEntrypoints, resolveThemeRoot, shopifyDevtoolsBranding, shopifyDevtoolsConfig, viteOrigin, viteVersionWarning } from '../src/index.js'
 import { INSPECT_ICON } from '../src/inspect-icon.js'
 
@@ -85,11 +87,30 @@ describe('Vite plugin', () => {
 
   it('turns root-relative iframe dock urls into urls on the Vite server', () => {
     expect(absoluteDockUrl({ id: 'vue', type: 'iframe', url: '/__devtools__/' }, 'http://localhost:5173/')).toBe('http://localhost:5173/__devtools__/')
+    expect(absoluteDockUrl({ id: 'query', type: 'iframe', url: '/panel/?tab=components#selected' }, 'http://localhost:5173/')).toBe('http://localhost:5173/panel/?tab=components#selected')
     expect(absoluteDockUrl({ id: 'vue', type: 'iframe', url: '/__devtools__/' }, 'https://tunnel.example')).toBe('https://tunnel.example/__devtools__/')
     expect(absoluteDockUrl({ id: 'a', type: 'iframe', url: 'http://localhost:5173/x' }, 'http://localhost:5173')).toBeUndefined()
     expect(absoluteDockUrl({ id: 'b', type: 'iframe', url: '//cdn.example/x' }, 'http://localhost:5173')).toBeUndefined()
     expect(absoluteDockUrl({ id: 'c', type: 'action', url: '/x' }, 'http://localhost:5173')).toBeUndefined()
+    expect(absoluteDockUrl({ id: 'group', type: 'group', url: '/x' }, 'http://localhost:5173')).toBeUndefined()
     expect(absoluteDockUrl({ id: 'd', type: 'iframe' }, 'http://localhost:5173')).toBeUndefined()
+  })
+
+  it('rewrites the real Vue DevTools 9 beta iframe registration without claiming host-origin support', async () => {
+    const vuePackage = createRequire(import.meta.url)('vite-plugin-vue-devtools/package.json') as { version: string }
+    expect(vuePackage.version).toBe('9.0.0-beta.1')
+    const createVuePlugins = vueDevTools as (options: { appendTo: string }) => unknown[]
+    const vuePlugins = createVuePlugins({ appendTo: 'frontend/theme.ts' }).flat(Infinity) as Array<{ name?: string, devtools?: { setup?: (context: unknown) => void } }>
+    const registration = vuePlugins.find(({ name }) => name === 'vue-devtools:dock-registration')
+    expect(registration).toBeTruthy()
+    let vueEntry: { id: string, type: string, url: string } | undefined
+    registration?.devtools?.setup?.({
+      views: { hostStatic: vi.fn() },
+      docks: { register: (entry: typeof vueEntry) => { vueEntry = entry } },
+    })
+    expect(vueEntry).toMatchObject({ id: 'vue-devtools', type: 'iframe', url: '/__devtools__/' })
+    expect(absoluteDockUrl(vueEntry!, 'http://localhost:5173')).toBe('http://localhost:5173/__devtools__/')
+    expect(Object.keys(vueEntry!)).not.toContain('allowedOrigins')
   })
 
   it('prefers the configured public origin over where Vite listens', () => {
@@ -104,9 +125,11 @@ describe('Vite plugin', () => {
     const views = new Map<string, { id: string; type: string; url?: string }>([
       ['vue', { id: 'vue', type: 'iframe', url: '/__devtools__/' }],
       ['abs', { id: 'abs', type: 'iframe', url: 'http://localhost:5173/own/' }],
+      ['query', { id: 'query', type: 'iframe', url: '/panel?tab=components#selected' }],
+      ['group', { id: 'group', type: 'group', url: '/group/' }],
       ['act', { id: 'act', type: 'action' }],
     ])
-    const update = vi.fn()
+    const update = vi.fn((entry: { id: string, type: string, url?: string }) => { onUpdated?.(entry) })
     let onUpdated: ((entry: { id: string; type: string; url?: string }) => void) | undefined
     await plugin.devtools?.setup?.({
       docks: { register: vi.fn(), views, update, events: { on: (_event: string, handler: typeof onUpdated) => { onUpdated = handler } } },
@@ -122,13 +145,14 @@ describe('Vite plugin', () => {
       httpServer: { listening: false, once: (_event: string, handler: () => void) => { listening = handler } },
     })
     listening?.()
-    expect(update).toHaveBeenCalledTimes(1)
+    expect(update).toHaveBeenCalledTimes(2)
     expect(update).toHaveBeenCalledWith({ id: 'vue', type: 'iframe', url: 'http://localhost:5173/__devtools__/' })
+    expect(update).toHaveBeenCalledWith({ id: 'query', type: 'iframe', url: 'http://localhost:5173/panel?tab=components#selected' })
 
     onUpdated?.({ id: 'late', type: 'iframe', url: '/late/' })
     expect(update).toHaveBeenLastCalledWith({ id: 'late', type: 'iframe', url: 'http://localhost:5173/late/' })
     onUpdated?.({ id: 'vue', type: 'iframe', url: 'http://localhost:5173/__devtools__/' })
-    expect(update).toHaveBeenCalledTimes(2)
+    expect(update).toHaveBeenCalledTimes(3)
   })
 
   it('broadcasts cache invalidation only for section-resolution theme sources', async () => {
