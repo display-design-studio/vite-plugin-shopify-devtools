@@ -36,7 +36,7 @@ export class ShopifyDevtools extends HTMLElement {
     this.#shadow.innerHTML = `<style>${styles}</style>
       <section id="panel" aria-label="Shopify Liquid DevTools">
         <header><div class="title">${liquidIcon}<strong>Liquid DevTools</strong><span class="badge">DEV</span></div><div class="header-actions"><button id="panel-inspect" class="panel-inspect" aria-label="Inspect Liquid component" aria-pressed="false">${inspectIcon}<span>Inspect page</span></button><button id="close" class="icon" aria-label="Close DevTools">${closeIcon}</button></div></header>
-        <div class="workspace"><nav><div class="nav-title">Components</div><label class="search"><span class="sr-only">Search components</span><input id="search" type="search" placeholder="Search components…" autocomplete="off"></label><ol id="tree" role="tree" aria-label="Liquid components"></ol></nav><main id="details"><div class="empty"><strong>No component selected</strong><span>Select a component from the tree or activate the inspector.</span></div></main></div>
+        <div class="workspace"><nav><div class="nav-title">Components</div><label class="search"><span class="sr-only">Search components</span><input id="search" type="search" placeholder="Search components…" autocomplete="off"></label><div id="missing-report"></div><ol id="tree" role="tree" aria-label="Liquid components"></ol></nav><main id="details"><div class="empty"><strong>No component selected</strong><span>Select a component from the tree or activate the inspector.</span></div></main></div>
       </section>
       <div id="toast" role="status" aria-live="polite"></div>
       <div id="toolbar" role="toolbar" aria-label="Shopify Liquid DevTools">
@@ -193,7 +193,8 @@ export class ShopifyDevtools extends HTMLElement {
     this.#shadow.querySelector('#panel-inspect')?.setAttribute('aria-pressed', String(force))
     this.#tree = this.#controller.tree
     const signature = this.#tree.flatMap(function walk(node): ComponentNode[] { return [node, ...node.children.flatMap(walk)] })
-      .map((node) => [node.id, node.occurrence, node.instanceKey, node.instanceName, node.origin, node.app, node.appType, node.instanceSourceFile, node.callSiteFile, node.callSiteLine, JSON.stringify(node.settings), node.children.length].join('|')).join('\n')
+      .map((node) => [node.id, node.occurrence, node.instanceKey, node.instanceName, node.origin, node.app, node.appType, node.instanceSourceFile, node.callSiteFile, node.callSiteLine, node.inferenceConfidence, node.inferenceReason, JSON.stringify(node.settings), node.children.length].join('|')).join('\n')
+      + JSON.stringify(this.#controller.diagnostics)
     if (signature !== this.#treeSignature) { this.#treeSignature = signature; this.renderTree() }
     if (this.#controller.selected) this.showSelection(this.#controller.selected)
     if (this.#controller.error && this.#controller.error !== this.#shownError) {
@@ -235,7 +236,31 @@ export class ShopifyDevtools extends HTMLElement {
     if (!items.length) items.push(this.renderNote(this.#query ? `No components match “${this.#query}”.` : 'No Liquid sections found on this page.'))
     else if (this.#controller.mode === 'inferred' && !this.#query) items.unshift(this.renderNote('Blocks and snippets are inferred from your theme source and can be incomplete. Use the full mode for exact results: see "Full mode" in the README.'))
     list.replaceChildren(...items)
+    this.renderMissingReport()
     this.syncTabStops()
+  }
+
+  renderMissingReport(): void {
+    const container = this.#shadow.querySelector('#missing-report')
+    if (!container) return
+    container.replaceChildren()
+    const diagnostics = this.#controller.diagnostics.filter((item) => !this.#query || [item.file, item.callSiteFile, item.reason].filter(Boolean).join(' ').toLocaleLowerCase().includes(this.#query))
+    if (!diagnostics.length) return
+    const report = document.createElement('details'); report.className = 'missing-report'
+    const summary = document.createElement('summary'); summary.textContent = `${diagnostics.length} expected ${diagnostics.length === 1 ? 'snippet was' : 'snippets were'} not found`
+    const list = document.createElement('ul')
+    for (const diagnostic of diagnostics) {
+      const item = document.createElement('li')
+      const file = document.createElement('strong'); file.textContent = diagnostic.file
+      const reason = document.createElement('span'); reason.textContent = diagnostic.reason
+      item.append(file)
+      if (diagnostic.callSiteFile) {
+        const callSite = document.createElement('small'); callSite.textContent = `${diagnostic.callSiteFile}:${diagnostic.callSiteLine ?? 1}`
+        item.append(callSite)
+      }
+      item.append(reason); list.append(item)
+    }
+    report.append(summary, list); container.append(report)
   }
 
   syncTabStops(preferred?: HTMLElement): void {
@@ -283,6 +308,7 @@ export class ShopifyDevtools extends HTMLElement {
     text.append(name, kind)
     const badgeText = this.originLabel(node)
     if (badgeText) { const badge = document.createElement('em'); badge.className = 'origin'; badge.textContent = badgeText; text.append(badge) }
+    if (node.inferenceConfidence) { const badge = document.createElement('em'); badge.className = `confidence ${node.inferenceConfidence}`; badge.textContent = node.inferenceConfidence; text.append(badge) }
     const initial = document.createElement('span'); initial.className = `kind ${node.kind}`; initial.textContent = node.kind.slice(0, 1).toUpperCase()
     button.append(disclosure, initial, text)
     button.addEventListener('click', (event) => {
@@ -368,6 +394,7 @@ export class ShopifyDevtools extends HTMLElement {
     const fields = document.createElement('dl')
     const dom = element ? `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ''}${[...element.classList].map((value) => `.${value}`).join('')}` : 'No DOM root'
     const detailFields: Array<[string, string, string?]> = [['File', node.file, node.file], ['Line', String(node.line)], ['Location', `${node.file}:${node.line}`, `${node.file}:${node.line}`], ['DOM', dom], ['Shopify ID', node.shopifyId ?? '—', node.shopifyId]]
+    if (node.inferenceConfidence) detailFields.push(['Confidence', node.inferenceConfidence], ['Evidence', node.inferenceReason ?? '—'])
     for (const [label, value, copy] of detailFields) {
       const dt = document.createElement('dt'); dt.textContent = label
       const dd = document.createElement('dd'); dd.textContent = value
@@ -484,7 +511,8 @@ header .icon{width:30px;height:30px}.header-actions{display:flex;align-items:cen
 nav{overflow:auto;background:var(--panel);border-right:1px solid var(--border);padding:10px 8px}.nav-title{padding:2px 8px 8px;color:var(--muted);font-size:12px;line-height:16px;font-weight:650;text-transform:uppercase;letter-spacing:.07em}.search{display:block;margin:0 3px 8px}.search input{box-sizing:border-box;width:100%;height:30px;border:1px solid var(--border);border-radius:7px;padding:4px 9px;background:var(--raised);color:var(--text);font:inherit}.search input::placeholder{color:var(--muted)}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 ol{list-style:none;padding:0;margin:0}ol ol{padding-left:14px}
 .tree-item{width:100%;display:flex;gap:7px;align-items:center;color:var(--text);background:transparent;border:0;border-radius:8px;padding:6px 7px 6px 2px;text-align:left;cursor:pointer;transition:background .15s var(--ease)}.tree-item:hover{background:var(--raised)}.tree-item.selected{background:var(--selected);box-shadow:inset 2px 0 0 var(--accent)}
-.tree-item>span:not(.kind):not(.disclosure){min-width:0;display:flex;flex-direction:column}.tree-item b{font-size:13px;font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tree-item small,.detail-heading small{font-size:12px;line-height:16px;color:var(--muted);text-transform:capitalize}.disclosure{width:16px;height:20px;display:grid;place-items:center;flex:none}.disclosure svg{width:13px;height:13px;transition:transform .12s}.tree-item[aria-expanded=true] .disclosure svg{transform:rotate(90deg)}.disclosure.placeholder{visibility:hidden}.origin{align-self:flex-start;margin-top:2px;padding:0 5px;border:1px solid var(--border);border-radius:10px;color:var(--muted);font-size:10px;line-height:15px;font-style:normal}
+.tree-item>span:not(.kind):not(.disclosure){min-width:0;display:flex;flex-direction:column}.tree-item b{font-size:13px;font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tree-item small,.detail-heading small{font-size:12px;line-height:16px;color:var(--muted);text-transform:capitalize}.disclosure{width:16px;height:20px;display:grid;place-items:center;flex:none}.disclosure svg{width:13px;height:13px;transition:transform .12s}.tree-item[aria-expanded=true] .disclosure svg{transform:rotate(90deg)}.disclosure.placeholder{visibility:hidden}.origin,.confidence{align-self:flex-start;margin-top:2px;padding:0 5px;border:1px solid var(--border);border-radius:10px;color:var(--muted);font-size:10px;line-height:15px;font-style:normal}.confidence{text-transform:uppercase;letter-spacing:.03em}.confidence.high{color:var(--section-text)}.confidence.medium{color:var(--snippet-text)}
+.missing-report{margin:0 3px 8px;border:1px solid var(--border);border-radius:7px;background:var(--raised);font-size:11px}.missing-report summary{cursor:pointer;padding:6px 8px;color:var(--muted);font-weight:600}.missing-report ul{list-style:none;margin:0;padding:0 8px 7px}.missing-report li{display:flex;flex-direction:column;padding:5px 0;border-top:1px solid var(--border)}.missing-report strong{font-weight:600;overflow-wrap:anywhere}.missing-report small,.missing-report span{color:var(--muted);overflow-wrap:anywhere}
 .kind{width:22px;height:22px;flex:none;display:grid;place-items:center;border-radius:4px;font-size:12px;font-weight:650;background:var(--raised);color:var(--muted)}.kind.section{background:var(--section-bg);color:var(--section-text)}.kind.block{background:var(--block-bg);color:var(--block-text)}.kind.snippet{background:var(--snippet-bg);color:var(--snippet-text)}
 main{min-width:0;overflow:auto;padding:16px}.tree-empty{list-style:none;padding:8px 7px;color:var(--muted);font-size:12px;line-height:1.45}.empty{height:100%;display:grid;place-content:center;gap:4px;text-align:center;color:var(--muted)}.empty strong{color:var(--text);font-weight:550}
 .card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px}

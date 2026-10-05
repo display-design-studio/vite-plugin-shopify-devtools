@@ -4,6 +4,16 @@ import type { ComponentNode } from './inspector.js'
 export interface InferContext {
   /** Hands out the n-th occurrence of a component id, so every node of the page has a unique key. */
   occurrence(id: string): number
+  diagnostics?: MissingSnippet[]
+}
+
+export type InferenceConfidence = 'high' | 'medium' | 'low'
+export type MissingSnippetReason = 'Root cannot be recognised' | 'No matching DOM element' | 'Ambiguous DOM match'
+export interface MissingSnippet {
+  file: string
+  callSiteFile?: string
+  callSiteLine?: number
+  reason: MissingSnippetReason
 }
 
 const signatureWeight = (signature: Signature): number => signature.classes.length + 2 * Object.keys(signature.attrs).length
@@ -45,20 +55,51 @@ function findMatches(scope: Element, expectation: Expectation, claimed: Set<Elem
   return [...found]
 }
 
+function confidenceFor(expectation: Expectation, element: Element): { level: InferenceConfidence, reason: string } {
+  if (expectation.shopifyAttributes && element.hasAttribute('data-shopify-editor-block')) {
+    return { level: 'high', reason: 'Matched Shopify block ID and type.' }
+  }
+  const signature = expectation.roots.find((candidate) => matchesSignature(element, candidate))
+  const attributes = signature ? Object.keys(signature.attrs) : []
+  if (attributes.length) return { level: 'high', reason: `Matched distinctive static ${attributes.length === 1 ? 'attribute' : 'attributes'}: ${attributes.join(', ')}.` }
+  if ((signature?.classes.length ?? 0) > 1) return { level: 'medium', reason: `Matched ${signature!.classes.length} static classes.` }
+  return { level: 'low', reason: `Matched one static class: ${signature?.classes[0] ?? 'unknown'}.` }
+}
+
+function reportMissing(context: InferContext, expectation: Expectation, reason: MissingSnippetReason): void {
+  if (expectation.kind !== 'snippet' || !context.diagnostics) return
+  const sites = expectation.callSites?.length ? expectation.callSites : [undefined]
+  for (const site of sites) {
+    const diagnostic: MissingSnippet = { file: expectation.file, callSiteFile: site?.file, callSiteLine: site?.line, reason }
+    if (!context.diagnostics.some((item) => item.file === diagnostic.file && item.callSiteFile === diagnostic.callSiteFile && item.callSiteLine === diagnostic.callSiteLine && item.reason === diagnostic.reason)) context.diagnostics.push(diagnostic)
+  }
+}
+
 /**
  * Finds, inside `scope`, the elements that the expected components would have rendered, and nests the
  * components they may contain. It guesses from static markup alone, so every node is marked as inferred.
  */
 export function inferNodes(scope: Element, expectations: Expectation[], context: InferContext, parent: ComponentNode | null, claimed: Set<Element> = new Set()): ComponentNode[] {
+  const matchable: Expectation[] = []
+  const collect = (items: Expectation[]): void => {
+    for (const expectation of items) {
+      if (!expectation.transparent) matchable.push(expectation)
+      else { reportMissing(context, expectation, 'Root cannot be recognised'); collect(expectation.children) }
+    }
+  }
+  collect(expectations)
   const owners = new Map<Element, Expectation>()
   const ambiguous = new Set<Element>()
-  for (const expectation of expectations) {
+  const ambiguousExpectations = new Set<Expectation>()
+  for (const expectation of matchable) {
     for (const element of findMatches(scope, expectation, claimed)) {
       const current = owners.get(element)
       if (!current) owners.set(element, expectation)
       else if (better(expectation, current)) { owners.set(element, expectation); ambiguous.delete(element) }
       // Two different components with identical markup: better to show nothing than to guess wrong.
-      else if (!better(current, expectation) && (current.file !== expectation.file || current.label !== expectation.label)) ambiguous.add(element)
+      else if (!better(current, expectation) && (current.file !== expectation.file || current.label !== expectation.label)) {
+        ambiguous.add(element); ambiguousExpectations.add(current); ambiguousExpectations.add(expectation)
+      }
     }
   }
 
@@ -74,6 +115,7 @@ export function inferNodes(scope: Element, expectations: Expectation[], context:
     const instance = expectation.instances?.[index]
     const callSite = expectation.callSites?.[index] ?? expectation.callSites?.[0]
     const id = `${expectation.kind}:${expectation.file}${expectation.label ? `:${expectation.label}` : ''}`
+    const confidence = confidenceFor(expectation, element)
     const node: ComponentNode = {
       id,
       kind: expectation.kind,
@@ -87,6 +129,8 @@ export function inferNodes(scope: Element, expectations: Expectation[], context:
       occurrence: context.occurrence(id),
       shopifyId: instance?.id,
       inferred: true,
+      inferenceConfidence: confidence.level,
+      inferenceReason: confidence.reason,
       label: expectation.label ? `${expectation.label}${instance ? ` · ${instance.id}` : ''}` : undefined,
       settings: instance?.settings,
       instanceSourceFile: instance?.sourceFile,
@@ -98,6 +142,10 @@ export function inferNodes(scope: Element, expectations: Expectation[], context:
     }
     node.children = inferNodes(element, expectation.children, context, node, claimed)
     nodes.push(node)
+  }
+  for (const expectation of matchable) {
+    if (expectation.kind !== 'snippet' || seen.has(expectation)) continue
+    reportMissing(context, expectation, ambiguousExpectations.has(expectation) ? 'Ambiguous DOM match' : 'No matching DOM element')
   }
   return nodes
 }

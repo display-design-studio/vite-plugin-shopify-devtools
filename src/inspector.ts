@@ -1,7 +1,7 @@
 import type { DockClientScriptContext } from '@vitejs/devtools-kit/client'
 import type { ComponentSource } from './protocol.js'
 import type { BlockInstance, Expectation } from './graph.js'
-import { compareTrees, inferNodes, type InferenceReport } from './infer.js'
+import { compareTrees, inferNodes, type InferenceConfidence, type InferenceReport, type MissingSnippet } from './infer.js'
 import type { ResolvedSection } from './sections.js'
 
 export interface ComponentNode extends ComponentSource {
@@ -14,6 +14,8 @@ export interface ComponentNode extends ComponentSource {
   shopifyId?: string
   /** Guessed from the theme source instead of read from markers. */
   inferred?: boolean
+  inferenceConfidence?: InferenceConfidence
+  inferenceReason?: string
   label?: string
   instanceKey?: string
   instanceName?: string
@@ -119,7 +121,7 @@ export function sectionWrappers(root: ParentNode = document): HTMLElement[] {
   return [...root.querySelectorAll<HTMLElement>('[id^="shopify-section-"]')]
 }
 
-export function sectionTree(wrappers: HTMLElement[], resolved: SectionLookup): ComponentNode[] {
+export function sectionTree(wrappers: HTMLElement[], resolved: SectionLookup, diagnostics?: MissingSnippet[]): ComponentNode[] {
   const occurrences = new Map<string, number>()
   const occurrence = (id: string): number => {
     const next = occurrences.get(id) ?? 0
@@ -131,7 +133,7 @@ export function sectionTree(wrappers: HTMLElement[], resolved: SectionLookup): C
     if (!source) return []
     const id = `section:${source.file}`
     const node: ComponentNode = { ...source, id, start: null, end: null, roots: [wrapper], parent: null, children: [], occurrence: occurrence(id), shopifyId: wrapper.id }
-    node.children = inferNodes(wrapper, source.tree ?? [], { occurrence }, node)
+    node.children = inferNodes(wrapper, source.tree ?? [], { occurrence, diagnostics }, node)
     return [node]
   })
 }
@@ -183,6 +185,7 @@ export class InspectorController {
   error?: Error
   rpc?: RpcCaller
   mode: 'markers' | 'inferred' | 'none' = 'none'
+  diagnostics: MissingSnippet[] = []
   #sectionRun = 0
   #sectionCache = new Map<string, ResolvedSection | undefined>()
   #overlay = document.createElement('div')
@@ -207,6 +210,7 @@ export class InspectorController {
   subscribe(listener: Listener): () => void { this.#listeners.add(listener); listener(this); return () => this.#listeners.delete(listener) }
   refresh(): void {
     const tree = componentTree()
+    this.diagnostics = []
     if (tree.length) { this.#show(tree, 'markers'); void this.#enrichMarkedSections(tree); return }
     void this.#refreshSections()
   }
@@ -298,7 +302,7 @@ export class InspectorController {
       return
     }
     if (run !== this.#sectionRun) return
-    const tree = sectionTree(wrappers, resolved)
+    const tree = sectionTree(wrappers, resolved, this.diagnostics)
     this.#show(tree, tree.length ? 'inferred' : 'none')
   }
 

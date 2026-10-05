@@ -81,9 +81,10 @@ describe('sectionExpectations', () => {
       'snippets/loop.liquid': `<b class="loop">{% render 'loop' %}</b>`,
     })
     const tree = await sectionExpectations(root, 'sections/s.liquid')
-    expect(tree.map((entry) => entry.file)).toEqual(['snippets/leaf.liquid', 'snippets/loop.liquid'])
+    expect(tree.map((entry) => entry.file)).toEqual(['snippets/wrap.liquid', 'snippets/loop.liquid'])
     expect(tree[1].children).toEqual([])
-    expect(tree[0].callSites).toEqual([{ file: 'snippets/wrap.liquid', line: 1 }])
+    expect(tree[0]).toMatchObject({ transparent: true, callSites: [{ file: 'sections/s.liquid', line: 1 }] })
+    expect(tree[0].children[0]).toMatchObject({ file: 'snippets/leaf.liquid', callSites: [{ file: 'snippets/wrap.liquid', line: 1 }] })
   })
 
   it('maps template blocks to theme block files and nests the ones inside them', async () => {

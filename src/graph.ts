@@ -38,6 +38,8 @@ export interface Expectation {
   shopifyAttributes?: boolean
   app?: boolean
   appType?: string
+  /** The snippet has no distinctive root; its children are still inferred in the caller's scope. */
+  transparent?: boolean
 }
 
 export interface SourceReference { file: string; line: number }
@@ -219,8 +221,8 @@ async function snippetExpectations(root: string, calls: RenderCall[], depth: num
     if (!graph) continue
     const children = await childExpectations(root, file, graph, [], depth + 1, [...trail, name])
     const callSites = calls.filter((call) => call.name === name).map(({ file: callFile, line }) => ({ file: callFile, line }))
-    // A snippet with no element of its own (or none that can be told apart) is transparent: its children belong to the caller.
-    const entries: Expectation[] = graph.roots.length ? [{ kind: 'snippet', file, line: 1, roots: graph.roots, children, callSites }] : children
+    // A transparent snippet remains in the graph for diagnostics, while inference promotes its children to the caller's scope.
+    const entries: Expectation[] = [{ kind: 'snippet', file, line: 1, roots: graph.roots, children, callSites, transparent: !graph.roots.length }]
     for (const entry of entries) if (!found.has(entry.file + (entry.label ?? ''))) found.set(entry.file + (entry.label ?? ''), entry)
   }
   return [...found.values()]

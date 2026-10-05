@@ -278,6 +278,30 @@ describe('pages without markers', () => {
     await vi.waitFor(() => expect(rpcCall).toHaveBeenCalledWith('shopify-devtools:open-in-editor', { file: 'sections/settings-demo.liquid', line: 12 }))
   })
 
+  it('shows confidence evidence and an expandable, searchable missing-snippet report only for inference', async () => {
+    rpcCall.mockImplementation(async (name: string) => name === 'shopify-devtools:resolve-sections' ? {
+      'shopify-section-template--10__confidence': { file: 'sections/confidence.liquid', line: 1, kind: 'section', tree: [
+        { kind: 'snippet', file: 'snippets/found.liquid', line: 1, roots: [{ tag: 'div', classes: ['found', 'specific'], attrs: {} }], children: [] },
+        { kind: 'snippet', file: 'snippets/missing.liquid', line: 1, roots: [{ tag: 'p', classes: ['missing'], attrs: {} }], children: [], callSites: [{ file: 'sections/confidence.liquid', line: 8 }] },
+      ] },
+    } : { ok: true })
+    document.body.innerHTML = '<div id="shopify-section-template--10__confidence"><div class="found specific"></div></div>'
+    document.dispatchEvent(new Event('shopify:section:load'))
+    const shadow = document.querySelector('shopify-liquid-devtools')?.shadowRoot
+    await vi.waitFor(() => expect(shadow?.querySelector('.confidence')?.textContent).toBe('medium'))
+    expect(shadow?.querySelector('.missing-report summary')?.textContent).toContain('1 expected snippet')
+    expect(shadow?.querySelector('.missing-report')?.textContent).toContain('sections/confidence.liquid:8')
+    ;(shadow?.querySelectorAll('.tree-item')[1] as HTMLButtonElement).click()
+    expect(shadow?.querySelector('#details')?.textContent).toContain('Confidencemedium')
+    expect(shadow?.querySelector('#details')?.textContent).toContain('Matched 2 static classes.')
+    const search = shadow?.querySelector('#search') as HTMLInputElement
+    search.value = 'found'; search.dispatchEvent(new Event('input'))
+    expect(shadow?.querySelector('.missing-report')).toBeNull()
+    search.value = 'missing'; search.dispatchEvent(new Event('input'))
+    expect(shadow?.querySelector('.missing-report')).toBeTruthy()
+    search.value = ''; search.dispatchEvent(new Event('input'))
+  })
+
   it('invalidates resolved sections after a theme source change', async () => {
     let file = 'sections/before.liquid'
     rpcCall.mockImplementation(async (name: string) => name === 'shopify-devtools:resolve-sections'

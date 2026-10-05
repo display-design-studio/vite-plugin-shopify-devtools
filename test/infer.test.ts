@@ -89,4 +89,37 @@ describe('inferNodes', () => {
     const nodes = run(`<div data-shopify-editor-block='{"id":"review-a","type":"shopify://apps/reviews/blocks/stars/123"}'></div>`, [app])
     expect(nodes[0]).toMatchObject({ app: true, label: 'stars · review-a', shopifyId: 'review-a', instanceSourceFile: 'templates/index.json' })
   })
+
+  it('explains high, medium, and low confidence from the evidence used', () => {
+    const nodes = run('<div class="one"></div><div class="two extra"></div><div id="unique"></div>', [
+      snippet('low', [signature('div', ['one'])]),
+      snippet('medium', [signature('div', ['two', 'extra'])]),
+      snippet('high', [signature('div', [], { id: 'unique' })]),
+    ])
+    expect(nodes.map((node) => [node.inferenceConfidence, node.inferenceReason])).toEqual([
+      ['low', 'Matched one static class: one.'],
+      ['medium', 'Matched 2 static classes.'],
+      ['high', 'Matched distinctive static attribute: id.'],
+    ])
+  })
+
+  it('reports missing, ambiguous, and transparent snippets once with their call sites while preserving transparent children', () => {
+    const scope = document.createElement('div')
+    scope.innerHTML = '<i class="leaf"></i><div class="same"></div>'
+    const diagnostics: NonNullable<Parameters<typeof inferNodes>[2]['diagnostics']> = []
+    const at = (file: string, line: number): Expectation['callSites'] => [{ file, line }]
+    const nodes = inferNodes(scope, [
+      { ...snippet('transparent', [], [snippet('leaf', [signature('i', ['leaf'])])]), transparent: true, callSites: at('sections/a.liquid', 3) },
+      { ...snippet('missing', [signature('p', ['gone'])]), callSites: at('sections/a.liquid', 4) },
+      { ...snippet('ambiguous-a', [signature('div', ['same'])]), callSites: at('sections/a.liquid', 5) },
+      { ...snippet('ambiguous-b', [signature('div', ['same'])]), callSites: at('sections/a.liquid', 6) },
+    ], { occurrence: () => 0, diagnostics }, null)
+    expect(files(nodes)).toEqual(['snippets/leaf.liquid'])
+    expect(diagnostics).toEqual([
+      { file: 'snippets/transparent.liquid', callSiteFile: 'sections/a.liquid', callSiteLine: 3, reason: 'Root cannot be recognised' },
+      { file: 'snippets/missing.liquid', callSiteFile: 'sections/a.liquid', callSiteLine: 4, reason: 'No matching DOM element' },
+      { file: 'snippets/ambiguous-a.liquid', callSiteFile: 'sections/a.liquid', callSiteLine: 5, reason: 'Ambiguous DOM match' },
+      { file: 'snippets/ambiguous-b.liquid', callSiteFile: 'sections/a.liquid', callSiteLine: 6, reason: 'Ambiguous DOM match' },
+    ])
+  })
 })

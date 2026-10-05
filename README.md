@@ -56,7 +56,9 @@ The tree supports standard keyboard navigation: Up and Down move through visible
 
 ### Inferred blocks and snippets
 
-Shopify leaves no trace of blocks and snippets in the HTML it renders, so in the default mode the plugin works them out. The server reads your Liquid, follows the static `{% render 'snippet' %}` calls and the blocks of each section, and records the markup each file emits first (tag, static classes, static `id` and `data-*` attributes). The panel then looks for that markup inside the section on the page and nests what it finds. Inferred entries are labelled **inferred**.
+Shopify leaves no trace of blocks and snippets in the HTML it renders, so in the default mode the plugin works them out. The server reads your Liquid, follows the static `{% render 'snippet' %}` calls and the blocks of each section, and records the markup each file emits first (tag, static classes, static `id` and `data-*` attributes). The panel then looks for that markup inside the section on the page and nests what it finds. Inferred entries are labelled **inferred** and carry a confidence badge: **high** for Shopify runtime identity or a distinctive static attribute, **medium** for multiple static classes, and **low** for a single static class. Select an entry to see the evidence behind its rating.
+
+When an expected snippet cannot be identified, an expandable report above the component tree shows its file, static render call site, and the reason: an unrecognisable root, no matching DOM element, or an ambiguous match. Repeated diagnostics are deduplicated. A snippet with no recognisable root still remains transparent to inference, so recognisable children rendered by it can appear in the caller's scope.
 
 Both dynamic block regions (`{% content_for 'blocks' %}` and loops over `section.blocks` or nested `block.blocks`) and fixed `{% content_for 'block', type: '…', id: '…' %}` calls are represented. Static block entries retain their declared ID and can open the Liquid call site from the details panel.
 
