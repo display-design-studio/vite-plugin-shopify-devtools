@@ -11,7 +11,7 @@ async function theme(): Promise<string> {
   await mkdir(path.join(root, 'templates'))
   await mkdir(path.join(root, 'sections'))
   for (const name of ['hero', 'main-product', 'main-collection', 'header', 'feed-artists']) await writeFile(path.join(root, 'sections', `${name}.liquid`), '<div></div>')
-  await writeFile(path.join(root, 'templates', 'index.json'), HEADER + JSON.stringify({ sections: { hero: { type: 'hero' }, main: { type: 'main-collection' } } }))
+  await writeFile(path.join(root, 'templates', 'index.json'), HEADER + JSON.stringify({ sections: { hero: { type: 'hero', name: 'Homepage hero' }, main: { type: 'main-collection' } } }))
   await writeFile(path.join(root, 'templates', 'product.json'), HEADER + JSON.stringify({ sections: { main: { type: 'main-product' } } }))
   await writeFile(path.join(root, 'sections', 'header-group.json'), HEADER + JSON.stringify({ sections: { header: { type: 'header' } } }))
   return root
@@ -32,8 +32,10 @@ describe('resolveSections', () => {
       'shopify-section-sections--456__header',
     ])
     expect(result['shopify-section-feed-artists']).toMatchObject({ file: 'sections/feed-artists.liquid', line: 1, kind: 'section' })
-    expect(result['shopify-section-template--123__hero']?.file).toBe('sections/hero.liquid')
-    expect(result['shopify-section-sections--456__header']?.file).toBe('sections/header.liquid')
+    expect(result['shopify-section-feed-artists']).toMatchObject({ origin: 'static' })
+    expect(result['shopify-section-feed-artists']?.instanceKey).toBeUndefined()
+    expect(result['shopify-section-template--123__hero']).toMatchObject({ file: 'sections/hero.liquid', origin: 'template', instanceKey: 'hero', instanceName: 'Homepage hero', owner: 'index', ownerFilename: 'templates/index.json' })
+    expect(result['shopify-section-sections--456__header']).toMatchObject({ file: 'sections/header.liquid', origin: 'section-group', instanceKey: 'header', owner: 'header-group', ownerFilename: 'sections/header-group.json' })
   })
 
   it('uses the page type to pick between templates that share a key', async () => {

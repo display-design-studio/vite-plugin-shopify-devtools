@@ -14,6 +14,11 @@ export interface ComponentNode extends ComponentSource {
   /** Guessed from the theme source instead of read from markers. */
   inferred?: boolean
   label?: string
+  instanceKey?: string
+  instanceName?: string
+  owner?: string
+  ownerFilename?: string
+  origin?: 'template' | 'section-group' | 'static'
 }
 
 export interface RpcCaller {
@@ -107,7 +112,7 @@ export function sectionTree(wrappers: HTMLElement[], resolved: SectionLookup): C
     const source = resolved[wrapper.id]
     if (!source) return []
     const id = `section:${source.file}`
-    const node: ComponentNode = { id, kind: 'section', file: source.file, line: source.line, start: null, end: null, roots: [wrapper], parent: null, children: [], occurrence: occurrence(id), shopifyId: wrapper.id }
+    const node: ComponentNode = { ...source, id, start: null, end: null, roots: [wrapper], parent: null, children: [], occurrence: occurrence(id), shopifyId: wrapper.id }
     node.children = inferNodes(wrapper, source.tree ?? [], { occurrence }, node)
     return [node]
   })
@@ -179,8 +184,30 @@ export class InspectorController {
   subscribe(listener: Listener): () => void { this.#listeners.add(listener); listener(this); return () => this.#listeners.delete(listener) }
   refresh(): void {
     const tree = componentTree()
-    if (tree.length) { this.#show(tree, 'markers'); return }
+    if (tree.length) { this.#show(tree, 'markers'); void this.#enrichMarkedSections(tree); return }
     void this.#refreshSections()
+  }
+
+  async #enrichMarkedSections(tree: ComponentNode[]): Promise<void> {
+    const sections = flatten(tree).map(({ node }) => node).filter((node) => node.kind === 'section')
+    const wrappers = sections.flatMap((node) => {
+      const wrapper = node.roots[0]?.closest<HTMLElement>('[id^="shopify-section-"]')
+      return wrapper ? [wrapper] : []
+    })
+    if (!wrappers.length || !this.rpc) return
+    try {
+      const resolved = await this.#resolveSections(wrappers)
+      if (this.tree !== tree) return
+      for (const node of sections) {
+        const id = node.roots[0]?.closest<HTMLElement>('[id^="shopify-section-"]')?.id
+        const source = id && resolved[id]
+        if (source) Object.assign(node, {
+          instanceKey: source.instanceKey, instanceName: source.instanceName, owner: source.owner,
+          ownerFilename: source.ownerFilename, origin: source.origin,
+        })
+      }
+      this.#emit()
+    } catch { /* Exact marker data remains usable if optional metadata lookup fails. */ }
   }
 
   #show(tree: ComponentNode[], mode: InspectorController['mode']): void {

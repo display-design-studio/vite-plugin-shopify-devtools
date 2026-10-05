@@ -39,6 +39,12 @@ That is all: keep running your project the way you already do (Vite alongside `s
 
 Open **Shopify Liquid** from the Vite DevTools dock. Use **Inspect page** in the panel header or the dedicated inspector action in the dock to pick a rendered component. Production builds are untouched because both the plugin and DevTools integration use `apply: 'serve'`, and source Liquid files are never rewritten.
 
+### Navigating the component tree
+
+Use the search field to filter by component name, theme-relative path, kind, JSON section key or name, and the **Template** or **Section group** badge. Matching entries keep their ancestors visible and expand their paths temporarily. Disclosure arrows collapse branches, and that state is saved for the current storefront origin.
+
+The tree supports standard keyboard navigation: Up and Down move through visible entries, Right expands a branch or enters its first child, Left collapses it or moves to its parent, and Enter opens the focused component in your editor. Selecting an entry brings it into view in the tree without moving the storefront page. The details card can copy the relative source path, `file:line` location, and Shopify ID when one is available.
+
 ## What it detects
 
 | Mode | Setup | Detects |

@@ -129,6 +129,41 @@ describe('browser panel', () => {
     expect(selected?.roots[0]?.id).toBe('second')
   })
 
+  it('filters ancestors, labels repeated entries, navigates, collapses, and copies source values', async () => {
+    const snippet = btoa(JSON.stringify({ id: 'snippet:card:10', kind: 'snippet', file: 'snippets/card.liquid', line: 7 }))
+    document.body.innerHTML = `<!--shopify-devtools:start:${marker}--><div id="shopify-section-hero"><!--shopify-devtools:start:${snippet}--><article></article><!--shopify-devtools:end:${snippet}--><!--shopify-devtools:start:${snippet}--><article></article><!--shopify-devtools:end:${snippet}--></div><!--shopify-devtools:end:${marker}-->`
+    document.dispatchEvent(new Event('shopify:section:load'))
+    const shadow = document.querySelector('shopify-liquid-devtools')?.shadowRoot
+    await vi.waitFor(() => expect(shadow?.querySelectorAll('.tree-item')).toHaveLength(3))
+    expect(shadow?.querySelector('#tree')?.textContent).toContain('card.liquid #2')
+
+    const search = shadow?.querySelector('#search') as HTMLInputElement
+    search.value = 'snippet'; search.dispatchEvent(new Event('input'))
+    expect(shadow?.querySelectorAll('.tree-item')).toHaveLength(3)
+    search.value = 'missing'; search.dispatchEvent(new Event('input'))
+    expect(shadow?.querySelector('.tree-empty')?.textContent).toContain('No components match')
+    search.value = ''; search.dispatchEvent(new Event('input'))
+
+    const sectionEntry = shadow?.querySelector('.tree-item') as HTMLButtonElement
+    ;(sectionEntry.querySelector('.disclosure') as HTMLElement).click()
+    expect(shadow?.querySelectorAll('.tree-item')).toHaveLength(1)
+    const collapsedSection = shadow?.querySelector('.tree-item') as HTMLButtonElement
+    expect(collapsedSection.getAttribute('aria-expanded')).toBe('false')
+    collapsedSection.focus()
+    collapsedSection.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    const expandedSection = shadow?.querySelector('.tree-item') as HTMLButtonElement
+    expect(expandedSection.getAttribute('aria-expanded')).toBe('true')
+    expandedSection.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    expect(shadow?.activeElement?.textContent).toContain('card.liquid')
+    ;(shadow?.activeElement as HTMLButtonElement).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    await vi.waitFor(() => expect(rpcCall).toHaveBeenCalledWith('shopify-devtools:open-in-editor', { file: 'snippets/card.liquid', line: 7 }))
+
+    const writeText = vi.fn(async () => undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    ;(shadow?.querySelector('#details .copy') as HTMLButtonElement).click()
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalledWith('snippets/card.liquid'))
+  })
+
   it('shows a useful RPC error from the editor action', async () => {
     rpcCall.mockRejectedValueOnce(new Error('Editor launcher failed'))
     document.body.innerHTML = `<!--shopify-devtools:start:${marker}--><section id="shopify-section-hero"></section><!--shopify-devtools:end:${marker}-->`

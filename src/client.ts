@@ -7,6 +7,8 @@ const icon = (paths: string): string => `<svg viewBox="0 0 24 24" aria-hidden="t
 const liquidIcon = `<img class="glyph" src="${SHOPIFY_GLYPH_URI}" alt="" aria-hidden="true" draggable="false">`
 const inspectIcon = INSPECT_ICON_SVG.replace('<svg ', '<svg class="inspect-icon" aria-hidden="true" ')
 const closeIcon = icon('<path d="m7 7 10 10M17 7 7 17"/>')
+const disclosureIcon = icon('<path d="m9 6 6 6-6 6"/>')
+const COLLAPSED_KEY = 'shopify-devtools:collapsed-nodes'
 
 export class ShopifyDevtools extends HTMLElement {
   #shadow = this.attachShadow({ mode: 'open' })
@@ -15,6 +17,9 @@ export class ShopifyDevtools extends HTMLElement {
   #tree: ComponentNode[] = this.#controller.tree
   #unsubscribe?: () => void
   #shownError?: Error
+  #query = ''
+  #collapsed = this.readCollapsed()
+  #treeSignature = ''
   onInspectPage?: () => void
   #observer = new MutationObserver(() => this.#controller.refresh())
   #themeObserver = new MutationObserver(() => this.syncTheme())
@@ -26,7 +31,7 @@ export class ShopifyDevtools extends HTMLElement {
     this.#shadow.innerHTML = `<style>${styles}</style>
       <section id="panel" aria-label="Shopify Liquid DevTools">
         <header><div class="title">${liquidIcon}<strong>Liquid DevTools</strong><span class="badge">DEV</span></div><div class="header-actions"><button id="panel-inspect" class="panel-inspect" aria-label="Inspect Liquid component" aria-pressed="false">${inspectIcon}<span>Inspect page</span></button><button id="close" class="icon" aria-label="Close DevTools">${closeIcon}</button></div></header>
-        <div class="workspace"><nav><div class="nav-title">Components</div><ol id="tree"></ol></nav><main id="details"><div class="empty"><strong>No component selected</strong><span>Select a component from the tree or activate the inspector.</span></div></main></div>
+        <div class="workspace"><nav><div class="nav-title">Components</div><label class="search"><span class="sr-only">Search components</span><input id="search" type="search" placeholder="Search components…" autocomplete="off"></label><ol id="tree" role="tree" aria-label="Liquid components"></ol></nav><main id="details"><div class="empty"><strong>No component selected</strong><span>Select a component from the tree or activate the inspector.</span></div></main></div>
       </section>
       <div id="toast" role="status" aria-live="polite"></div>
       <div id="toolbar" role="toolbar" aria-label="Shopify Liquid DevTools">
@@ -43,6 +48,10 @@ export class ShopifyDevtools extends HTMLElement {
     this.#shadow.querySelector('#inspect')?.addEventListener('click', () => this.toggleInspector())
     this.#shadow.querySelector('#panel-inspect')?.addEventListener('click', () => { if (this.onInspectPage) this.onInspectPage(); else this.toggleInspector() })
     this.#shadow.querySelector('#close')?.addEventListener('click', () => this.togglePanel(false))
+    this.#shadow.querySelector('#search')?.addEventListener('input', (event) => {
+      this.#query = (event.currentTarget as HTMLInputElement).value.trim().toLocaleLowerCase()
+      this.renderTree()
+    })
     for (const event of shopifyEvents) document.addEventListener(event, this.#refreshEvent)
     this.#observer.observe(document.documentElement, { childList: true, subtree: true })
     this.#unsubscribe = this.#controller.subscribe(() => this.syncController())
@@ -85,18 +94,56 @@ export class ShopifyDevtools extends HTMLElement {
     this.#shadow.querySelector('#panel-inspect')?.classList.toggle('active', force)
     this.#shadow.querySelector('#panel-inspect')?.setAttribute('aria-pressed', String(force))
     this.#tree = this.#controller.tree
-    const list = this.#shadow.querySelector('#tree')
-    if (list) {
-      const items = this.#tree.map((node) => this.renderNode(node))
-      if (!items.length) items.push(this.renderNote('No Liquid sections found on this page.'))
-      else if (this.#controller.mode === 'inferred') items.unshift(this.renderNote('Blocks and snippets are inferred from your theme source and can be incomplete. Use the full mode for exact results: see "Full mode" in the README.'))
-      list.replaceChildren(...items)
-    }
+    const signature = this.#tree.flatMap(function walk(node): ComponentNode[] { return [node, ...node.children.flatMap(walk)] })
+      .map((node) => [node.id, node.occurrence, node.instanceKey, node.instanceName, node.origin, node.children.length].join('|')).join('\n')
+    if (signature !== this.#treeSignature) { this.#treeSignature = signature; this.renderTree() }
     if (this.#controller.selected) this.showSelection(this.#controller.selected)
     if (this.#controller.error && this.#controller.error !== this.#shownError) {
       this.#shownError = this.#controller.error
       this.toast(this.#controller.error.message, 'error')
     }
+  }
+
+  readCollapsed(): Set<string> {
+    try {
+      const value = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '[]')
+      return new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [])
+    } catch { return new Set() }
+  }
+
+  saveCollapsed(): void {
+    try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...this.#collapsed])) } catch { /* Storage can be unavailable. */ }
+  }
+
+  nodeKey(node: ComponentNode): string { return `${node.id}:${node.occurrence}` }
+
+  originLabel(node: ComponentNode): string | undefined {
+    return node.origin === 'template' ? 'Template' : node.origin === 'section-group' ? 'Section group' : undefined
+  }
+
+  searchText(node: ComponentNode): string {
+    return [this.displayName(node, false), node.file, node.kind, node.instanceKey, node.instanceName, node.owner, node.ownerFilename, this.originLabel(node)].filter(Boolean).join(' ').toLocaleLowerCase()
+  }
+
+  nodeMatches(node: ComponentNode): boolean {
+    return !this.#query || this.searchText(node).includes(this.#query) || node.children.some((child) => this.nodeMatches(child))
+  }
+
+  renderTree(): void {
+    const list = this.#shadow.querySelector('#tree')
+    if (!list) return
+    const nodes = this.#tree.filter((node) => this.nodeMatches(node))
+    const items = nodes.map((node) => this.renderNode(node))
+    if (!items.length) items.push(this.renderNote(this.#query ? `No components match “${this.#query}”.` : 'No Liquid sections found on this page.'))
+    else if (this.#controller.mode === 'inferred' && !this.#query) items.unshift(this.renderNote('Blocks and snippets are inferred from your theme source and can be incomplete. Use the full mode for exact results: see "Full mode" in the README.'))
+    list.replaceChildren(...items)
+    this.syncTabStops()
+  }
+
+  syncTabStops(preferred?: HTMLElement): void {
+    const entries = [...this.#shadow.querySelectorAll<HTMLElement>('.tree-item')]
+    const active = preferred ?? entries.find((item) => item.classList.contains('selected')) ?? entries[0]
+    for (const entry of entries) entry.tabIndex = entry === active ? 0 : -1
   }
 
   renderNote(text: string): HTMLLIElement {
@@ -106,8 +153,14 @@ export class ShopifyDevtools extends HTMLElement {
   }
 
   // Inline blocks live in their section's file, so the file name alone would repeat the section.
-  displayName(node: ComponentNode): string {
-    return node.label && node.file.startsWith('sections/') ? node.label : node.file.split('/').at(-1) ?? node.file
+  displayName(node: ComponentNode, suffix = true): string {
+    const primary = node.label && node.file.startsWith('sections/') ? node.label : node.file.split('/').at(-1) ?? node.file
+    const name = [primary, node.instanceName, node.instanceKey].filter(Boolean).join(' · ')
+    if (!suffix) return name
+    const identical = this.#tree.flatMap(function walk(item): ComponentNode[] { return [item, ...item.children.flatMap(walk)] })
+      .filter((item) => this.displayName(item, false) === name)
+    const index = identical.indexOf(node)
+    return index > 0 ? `${name} #${index + 1}` : name
   }
 
   displayKind(node: ComponentNode): string {
@@ -116,23 +169,71 @@ export class ShopifyDevtools extends HTMLElement {
 
   renderNode(node: ComponentNode): HTMLLIElement {
     const item = document.createElement('li')
+    item.setAttribute('role', 'none')
     const button = document.createElement('button')
     button.className = 'tree-item'
-    button.dataset.key = `${node.id}:${node.occurrence}`
+    button.dataset.key = this.nodeKey(node)
+    button.setAttribute('role', 'treeitem')
+    const children = node.children.filter((child) => this.nodeMatches(child))
+    const expanded = this.#query ? true : !this.#collapsed.has(this.nodeKey(node))
+    if (node.children.length) button.setAttribute('aria-expanded', String(expanded))
+    const disclosure = document.createElement('span'); disclosure.className = `disclosure${node.children.length ? '' : ' placeholder'}`; disclosure.innerHTML = disclosureIcon
     const text = document.createElement('span')
     const name = document.createElement('b'); name.textContent = this.displayName(node)
     const kind = document.createElement('small'); kind.textContent = this.displayKind(node)
     text.append(name, kind)
+    const badgeText = this.originLabel(node)
+    if (badgeText) { const badge = document.createElement('em'); badge.className = 'origin'; badge.textContent = badgeText; text.append(badge) }
     const initial = document.createElement('span'); initial.className = `kind ${node.kind}`; initial.textContent = node.kind.slice(0, 1).toUpperCase()
-    button.append(initial, text)
-    button.addEventListener('click', () => this.select(node))
+    button.append(disclosure, initial, text)
+    button.addEventListener('click', (event) => {
+      if ((event.target as Element).closest('.disclosure') && node.children.length) this.toggleNode(node)
+      else this.select(node)
+    })
+    button.addEventListener('focus', () => { this.syncTabStops(button); if (this.#controller.selected !== node) this.select(node) })
+    button.addEventListener('keydown', (event) => this.onTreeKey(event, node))
     item.append(button)
-    if (node.children.length) {
+    if (children.length && expanded) {
       const nested = document.createElement('ol')
-      nested.append(...node.children.map((child) => this.renderNode(child)))
+      nested.setAttribute('role', 'group')
+      nested.append(...children.map((child) => this.renderNode(child)))
       item.append(nested)
     }
     return item
+  }
+
+  toggleNode(node: ComponentNode, expand = this.#collapsed.has(this.nodeKey(node))): void {
+    if (expand) this.#collapsed.delete(this.nodeKey(node)); else this.#collapsed.add(this.nodeKey(node))
+    this.saveCollapsed(); this.renderTree(); this.focusNode(node)
+  }
+
+  focusNode(node: ComponentNode): void {
+    const entry = [...this.#shadow.querySelectorAll<HTMLElement>('.tree-item')].find((item) => item.dataset.key === this.nodeKey(node))
+    entry?.focus(); if (entry && 'scrollIntoView' in entry) entry.scrollIntoView({ block: 'nearest' })
+  }
+
+  onTreeKey(event: KeyboardEvent, node: ComponentNode): void {
+    const visible = [...this.#shadow.querySelectorAll<HTMLElement>('.tree-item')]
+    const current = event.currentTarget as HTMLElement
+    const index = visible.indexOf(current)
+    let target: ComponentNode | undefined
+    if (event.key === 'ArrowDown') target = visible[index + 1] && this.nodeFor(visible[index + 1])
+    else if (event.key === 'ArrowUp') target = visible[index - 1] && this.nodeFor(visible[index - 1])
+    else if (event.key === 'ArrowRight' && node.children.length) {
+      if (this.#collapsed.has(this.nodeKey(node)) && !this.#query) this.toggleNode(node, true)
+      else target = node.children.find((child) => this.nodeMatches(child))
+    } else if (event.key === 'ArrowLeft') {
+      if (node.children.length && !this.#collapsed.has(this.nodeKey(node)) && !this.#query) this.toggleNode(node, false)
+      else target = node.parent ?? undefined
+    } else if (event.key === 'Enter') void this.openEditor(node)
+    else return
+    event.preventDefault()
+    if (target) this.focusNode(target)
+  }
+
+  nodeFor(entry: HTMLElement): ComponentNode | undefined {
+    const nodes = this.#tree.flatMap(function walk(node): ComponentNode[] { return [node, ...node.children.flatMap(walk)] })
+    return nodes.find((node) => this.nodeKey(node) === entry.dataset.key)
   }
 
   select(node: ComponentNode): void {
@@ -140,9 +241,17 @@ export class ShopifyDevtools extends HTMLElement {
   }
 
   showSelection(node: ComponentNode): void {
-    this.#shadow.querySelectorAll('.tree-item.selected').forEach((item) => item.classList.remove('selected'))
-    const key = `${node.id}:${node.occurrence}`
-    ;[...this.#shadow.querySelectorAll<HTMLElement>('.tree-item')].find((item) => item.dataset.key === key)?.classList.add('selected')
+    for (let parent = node.parent; parent; parent = parent.parent) this.#collapsed.delete(this.nodeKey(parent))
+    this.saveCollapsed()
+    if (![...this.#shadow.querySelectorAll<HTMLElement>('.tree-item')].some((item) => item.dataset.key === this.nodeKey(node))) this.renderTree()
+    this.#shadow.querySelectorAll('.tree-item').forEach((item) => {
+      item.classList.remove('selected'); item.setAttribute('aria-selected', 'false')
+    })
+    const key = this.nodeKey(node)
+    const selected = [...this.#shadow.querySelectorAll<HTMLElement>('.tree-item')].find((item) => item.dataset.key === key)
+    selected?.classList.add('selected')
+    selected?.setAttribute('aria-selected', 'true')
+    if (selected && 'scrollIntoView' in selected) selected.scrollIntoView({ block: 'nearest' })
     const element = node.roots[0]
     const details = this.#shadow.querySelector('#details')
     if (!details) return
@@ -151,32 +260,38 @@ export class ShopifyDevtools extends HTMLElement {
     const initial = document.createElement('span'); initial.className = `kind ${node.kind}`; initial.textContent = node.kind.slice(0, 1).toUpperCase()
     const title = document.createElement('div')
     const strong = document.createElement('strong'); strong.textContent = this.displayName(node)
-    const small = document.createElement('small'); small.textContent = this.displayKind(node)
+    const small = document.createElement('small'); small.textContent = [this.displayKind(node), this.originLabel(node)].filter(Boolean).join(' · ')
     title.append(strong, small)
     heading.append(initial, title)
     const fields = document.createElement('dl')
     const dom = element ? `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ''}${[...element.classList].map((value) => `.${value}`).join('')}` : 'No DOM root'
-    for (const [label, value] of [['File', node.file], ['Line', String(node.line)], ['DOM', dom], ['Shopify ID', node.shopifyId ?? '—']]) {
+    const detailFields: Array<[string, string, string?]> = [['File', node.file, node.file], ['Line', String(node.line)], ['Location', `${node.file}:${node.line}`, `${node.file}:${node.line}`], ['DOM', dom], ['Shopify ID', node.shopifyId ?? '—', node.shopifyId]]
+    for (const [label, value, copy] of detailFields) {
       const dt = document.createElement('dt'); dt.textContent = label
       const dd = document.createElement('dd'); dd.textContent = value
+      if (copy) { const control = document.createElement('button'); control.className = 'copy'; control.type = 'button'; control.setAttribute('aria-label', `Copy ${label}`); control.textContent = 'Copy'; control.addEventListener('click', () => void this.copyValue(copy)); dd.append(control) }
       fields.append(dt, dd)
     }
     const open = document.createElement('button'); open.className = 'open-editor'; open.textContent = 'Open in editor'
     open.addEventListener('click', () => void this.openEditor(node, open))
     const card = document.createElement('section'); card.className = 'card'
-    card.append(heading, fields, open)
+    card.append(heading, open, fields)
     details.append(card)
-    if (element && 'scrollIntoView' in element) element.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }
 
-  async openEditor(node: ComponentNode, button: HTMLButtonElement): Promise<void> {
-    button.disabled = true; button.textContent = 'Opening…'
+  async copyValue(value: string): Promise<void> {
+    try { await navigator.clipboard.writeText(value); this.toast(`Copied ${value}`, 'success') }
+    catch { this.toast('Could not copy to the clipboard', 'error') }
+  }
+
+  async openEditor(node: ComponentNode, button?: HTMLButtonElement): Promise<void> {
+    if (button) { button.disabled = true; button.textContent = 'Opening…' }
     try {
       await this.#controller.openEditor(node)
       this.toast(`Opened ${node.file}:${node.line}`, 'success')
     } catch (error) {
       this.toast(error instanceof Error ? error.message : 'Could not open the editor', 'error')
-    } finally { button.disabled = false; button.textContent = 'Open in editor' }
+    } finally { if (button) { button.disabled = false; button.textContent = 'Open in editor' } }
   }
 
   toast(message: string, type: 'success' | 'error'): void {
@@ -228,15 +343,15 @@ header{height:45px;box-sizing:border-box;display:flex;align-items:center;justify
 header .icon{width:30px;height:30px}.header-actions{display:flex;align-items:center;gap:4px}
 .panel-inspect{display:none;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--border);border-radius:8px;color:var(--text);background:var(--panel);cursor:pointer;transition:background .15s var(--ease),border-color .15s var(--ease)}.panel-inspect:hover{background:var(--raised)}.panel-inspect.active{border-color:var(--accent);background:var(--accent-soft)}.panel-inspect span{font-size:13px;font-weight:550}
 .workspace{display:grid;grid-template-columns:260px minmax(0,1fr);min-height:0;flex:1}
-nav{overflow:auto;background:var(--panel);border-right:1px solid var(--border);padding:10px 8px}.nav-title{padding:2px 8px 8px;color:var(--muted);font-size:12px;line-height:16px;font-weight:650;text-transform:uppercase;letter-spacing:.07em}
+nav{overflow:auto;background:var(--panel);border-right:1px solid var(--border);padding:10px 8px}.nav-title{padding:2px 8px 8px;color:var(--muted);font-size:12px;line-height:16px;font-weight:650;text-transform:uppercase;letter-spacing:.07em}.search{display:block;margin:0 3px 8px}.search input{box-sizing:border-box;width:100%;height:30px;border:1px solid var(--border);border-radius:7px;padding:4px 9px;background:var(--raised);color:var(--text);font:inherit}.search input::placeholder{color:var(--muted)}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 ol{list-style:none;padding:0;margin:0}ol ol{padding-left:14px}
-.tree-item{width:100%;display:flex;gap:8px;align-items:center;color:var(--text);background:transparent;border:0;border-radius:8px;padding:6px 7px;text-align:left;cursor:pointer;transition:background .15s var(--ease)}.tree-item:hover{background:var(--raised)}.tree-item.selected{background:var(--selected);box-shadow:inset 2px 0 0 var(--accent)}
-.tree-item>span:not(.kind){min-width:0;display:flex;flex-direction:column}.tree-item b{font-size:13px;font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tree-item small,.detail-heading small{font-size:12px;line-height:16px;color:var(--muted);text-transform:capitalize}
+.tree-item{width:100%;display:flex;gap:7px;align-items:center;color:var(--text);background:transparent;border:0;border-radius:8px;padding:6px 7px 6px 2px;text-align:left;cursor:pointer;transition:background .15s var(--ease)}.tree-item:hover{background:var(--raised)}.tree-item.selected{background:var(--selected);box-shadow:inset 2px 0 0 var(--accent)}
+.tree-item>span:not(.kind):not(.disclosure){min-width:0;display:flex;flex-direction:column}.tree-item b{font-size:13px;font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tree-item small,.detail-heading small{font-size:12px;line-height:16px;color:var(--muted);text-transform:capitalize}.disclosure{width:16px;height:20px;display:grid;place-items:center;flex:none}.disclosure svg{width:13px;height:13px;transition:transform .12s}.tree-item[aria-expanded=true] .disclosure svg{transform:rotate(90deg)}.disclosure.placeholder{visibility:hidden}.origin{align-self:flex-start;margin-top:2px;padding:0 5px;border:1px solid var(--border);border-radius:10px;color:var(--muted);font-size:10px;line-height:15px;font-style:normal}
 .kind{width:22px;height:22px;flex:none;display:grid;place-items:center;border-radius:4px;font-size:12px;font-weight:650;background:var(--raised);color:var(--muted)}.kind.section{background:var(--section-bg);color:var(--section-text)}.kind.block{background:var(--block-bg);color:var(--block-text)}.kind.snippet{background:var(--snippet-bg);color:var(--snippet-text)}
 main{min-width:0;overflow:auto;padding:16px}.tree-empty{list-style:none;padding:8px 7px;color:var(--muted);font-size:12px;line-height:1.45}.empty{height:100%;display:grid;place-content:center;gap:4px;text-align:center;color:var(--muted)}.empty strong{color:var(--text);font-weight:550}
 .card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px}
 .detail-heading{display:flex;align-items:center;gap:10px;padding-bottom:12px;border-bottom:1px solid var(--border)}.detail-heading>div{display:flex;flex-direction:column}.detail-heading strong{font-weight:650}
-dl{display:grid;grid-template-columns:90px minmax(0,1fr);gap:8px 14px;margin:14px 0}dt{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere;font-family:ui-monospace,SFMono-Regular,'SF Mono',Consolas,'Liberation Mono',Menlo,monospace;font-size:13px}
+dl{display:grid;grid-template-columns:90px minmax(0,1fr);gap:8px 14px;margin:14px 0}dt{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere;font-family:ui-monospace,SFMono-Regular,'SF Mono',Consolas,'Liberation Mono',Menlo,monospace;font-size:13px}.copy{float:right;margin-left:8px;border:1px solid var(--border);border-radius:5px;padding:1px 6px;background:transparent;color:var(--muted);cursor:pointer;font:inherit;font-size:11px}.copy:hover{background:var(--raised);color:var(--text)}
 .open-editor{border:0;background:var(--primary-bg);color:var(--primary-text);border-radius:8px;padding:6px 12px;font-weight:550;cursor:pointer;transition:background .15s var(--ease)}.open-editor:hover{background:var(--primary-hover)}.open-editor:disabled{opacity:.6;cursor:wait}
 #highlights{position:fixed;inset:0;pointer-events:none}.highlight{position:fixed;box-sizing:border-box;border:2px solid var(--accent);background:var(--accent-soft);border-radius:2px;box-shadow:0 0 0 1px #fff3 inset}
 #toast{position:fixed;left:50%;bottom:72px;max-width:min(460px,calc(100vw - 30px));transform:translate(-50%,8px);opacity:0;visibility:hidden;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);box-shadow:var(--shadow-float);transition:all .15s var(--ease)}#toast.show{opacity:1;visibility:visible;transform:translate(-50%,0)}

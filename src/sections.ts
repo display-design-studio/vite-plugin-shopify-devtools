@@ -8,6 +8,11 @@ export interface ResolvedSection {
   kind: 'section'
   /** The snippets and blocks this section may contain, read from its Liquid and template JSON. */
   tree?: Expectation[]
+  instanceKey?: string
+  instanceName?: string
+  owner?: string
+  ownerFilename?: string
+  origin?: 'template' | 'section-group' | 'static'
 }
 
 const MAX_IDS = 200
@@ -38,8 +43,8 @@ export function parseJsonc(text: string): unknown {
   return JSON.parse(out)
 }
 
-type Candidate = { owner: string; type: string; blocks: JsonBlock[] }
-type RawBlock = { type?: unknown; disabled?: unknown; blocks?: Record<string, RawBlock>; block_order?: unknown }
+type Candidate = { owner: string; ownerFilename: string; key?: string; name?: string; type: string; blocks: JsonBlock[] }
+type RawBlock = { type?: unknown; name?: unknown; disabled?: unknown; blocks?: Record<string, RawBlock>; block_order?: unknown }
 
 /** Blocks of a section or block in the order Shopify renders them, without the disabled ones. */
 function normalizeBlocks(raw: RawBlock | undefined): JsonBlock[] {
@@ -57,7 +62,7 @@ async function readSectionTypes(file: string): Promise<Array<[string, { type: st
     const data = parseJsonc(await readFile(file, 'utf8')) as { sections?: Record<string, RawBlock> }
     return Object.entries(data?.sections ?? {})
       .filter((entry): entry is [string, RawBlock & { type: string }] => typeof entry[1]?.type === 'string' && SECTION_NAME.test(entry[1].type))
-      .map(([key, value]) => [key, { type: value.type, blocks: normalizeBlocks(value) }])
+      .map(([key, value]) => [key, { type: value.type, name: typeof value.name === 'string' ? value.name : undefined, blocks: normalizeBlocks(value) }])
   } catch { return [] }
 }
 
@@ -72,7 +77,7 @@ async function collect(files: string[], ownerOf: (file: string) => string): Prom
   await Promise.all(files.map(async (file) => {
     for (const [key, section] of await readSectionTypes(file)) {
       const list = keys.get(key) ?? []
-      list.push({ owner: ownerOf(file), ...section })
+      list.push({ owner: ownerOf(file), ownerFilename: path.relative(path.dirname(path.dirname(file)), file).split(path.sep).join('/'), key, ...section })
       keys.set(key, list)
     }
   }))
@@ -93,10 +98,12 @@ export async function resolveSections(root: string, ids: unknown, pageType?: unk
   const result: Record<string, ResolvedSection> = {}
 
   for (const id of wrappers) {
-    let found: { type: string; blocks: JsonBlock[] } | undefined
+    let found: Candidate | undefined
+    let origin: ResolvedSection['origin']
     const template = id.match(/^shopify-section-template--\d+__(.+)$/)
     const group = id.match(/^shopify-section-sections--\d+__(.+)$/)
     if (template) {
+      origin = 'template'
       templates ??= await collect(
         [...await jsonFiles(path.join(root, 'templates')), ...await jsonFiles(path.join(root, 'templates', 'customers'))],
         (file) => path.relative(path.join(root, 'templates'), file).replace(/\.json$/, '').split(path.sep).join('/'),
@@ -104,15 +111,22 @@ export async function resolveSections(root: string, ids: unknown, pageType?: unk
       const candidates = templates.get(template[1]) ?? []
       found = candidates.find((candidate) => preferred && (candidate.owner === preferred || candidate.owner.startsWith(`${preferred}.`))) ?? candidates[0]
     } else if (group) {
+      origin = 'section-group'
       groups ??= await collect(await jsonFiles(path.join(root, 'sections')), (file) => path.basename(file, '.json'))
       found = groups.get(group[1])?.[0]
     } else {
       const name = id.replace(/^shopify-section-/, '')
-      if (SECTION_NAME.test(name)) found = { type: name, blocks: [] }
+      if (SECTION_NAME.test(name)) {
+        origin = 'static'
+        found = { type: name, blocks: [], owner: `sections/${name}.liquid`, ownerFilename: `sections/${name}.liquid` }
+      }
     }
     if (!found) continue
     const file = `sections/${found.type}.liquid`
-    if (await exists(file)) result[id] = { file, line: 1, kind: 'section', tree: await sectionExpectations(root, file, found.blocks) }
+    if (await exists(file)) result[id] = {
+      file, line: 1, kind: 'section', tree: await sectionExpectations(root, file, found.blocks),
+      instanceKey: found.key, instanceName: found.name, owner: found.owner, ownerFilename: found.ownerFilename, origin,
+    }
   }
   return result
 }
