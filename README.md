@@ -58,6 +58,8 @@ The tree supports standard keyboard navigation: Up and Down move through visible
 
 Shopify leaves no trace of blocks and snippets in the HTML it renders, so in the default mode the plugin works them out. The server reads your Liquid, follows the static `{% render 'snippet' %}` calls and the blocks of each section, and records the markup each file emits first (tag, static classes, static `id` and `data-*` attributes). The panel then looks for that markup inside the section on the page and nests what it finds. Inferred entries are labelled **inferred**.
 
+Both dynamic block regions (`{% content_for 'blocks' %}` and loops over `section.blocks` or nested `block.blocks`) and fixed `{% content_for 'block', type: '…', id: '…' %}` calls are represented. Static block entries retain their declared ID and can open the Liquid call site from the details panel.
+
 Changes to template JSON, section groups, sections, blocks, and snippets invalidate the resolved tree automatically; the open panel refreshes without requiring a page reload.
 
 It is a best effort, tuned to prefer showing nothing over showing something wrong:

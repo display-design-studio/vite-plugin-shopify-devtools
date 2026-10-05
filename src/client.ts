@@ -380,8 +380,9 @@ export class ShopifyDevtools extends HTMLElement {
       actions.append(openInstance)
     }
     if (node.callSiteFile) {
-      const openCallSite = document.createElement('button'); openCallSite.className = 'open-source'; openCallSite.textContent = 'Open render call'
-      openCallSite.addEventListener('click', () => void this.openRelatedSource(node.callSiteFile!, node.callSiteLine ?? 1, 'Open render call', openCallSite))
+      const callLabel = node.kind === 'block' ? 'Open block call' : 'Open render call'
+      const openCallSite = document.createElement('button'); openCallSite.className = 'open-source'; openCallSite.textContent = callLabel
+      openCallSite.addEventListener('click', () => void this.openRelatedSource(node.callSiteFile!, node.callSiteLine ?? 1, callLabel, openCallSite))
       actions.append(openCallSite)
     }
     card.append(heading, actions, fields)

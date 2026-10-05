@@ -54,6 +54,16 @@ describe('analyze', () => {
     expect(analyze("<div>{% content_for 'blocks' %}</div>").contentForBlocks).toBe(true)
     expect(analyze('<div></div>').contentForBlocks).toBe(false)
   })
+
+  it('reads static block calls and nested block loops with custom variable names', () => {
+    const graph = analyze(`{% content_for 'block', type: '_heading', id: 'fixed-heading' %}
+{% for child_block in block.blocks %}
+  {% case child_block.type %}{% when 'text' %}<p class="nested"></p>{% endcase %}
+{% endfor %}`)
+    expect(graph.staticBlocks).toEqual([{ type: '_heading', id: 'fixed-heading', line: 1 }])
+    expect(graph.slots).toHaveLength(1)
+    expect(graph.slots[0]).toMatchObject({ types: ['text'], roots: [{ tag: 'p', classes: ['nested'], attrs: {} }] })
+  })
 })
 
 describe('sectionExpectations', () => {
@@ -82,6 +92,19 @@ describe('sectionExpectations', () => {
     expect(tree.map((entry) => [entry.file, entry.instances?.map((instance) => instance.id)])).toEqual([['blocks/group.liquid', ['g']]])
     expect(tree[0].instances?.[0]).toMatchObject({ settings: { layout: 'stack' }, sourceFile: 'templates/index.json', sourceLine: 8 })
     expect(tree[0].children.map((entry) => [entry.file, entry.instances?.map((instance) => instance.id)])).toEqual([['blocks/text.liquid', ['t1', 't2']]])
+  })
+
+  it('maps static blocks and inline loops over nested block.blocks', async () => {
+    const root = await theme({
+      'sections/s.liquid': `{% content_for 'block', type: 'group', id: 'fixed-group' %}`,
+      'blocks/group.liquid': `<div class="group">{% for child in block.blocks %}{% case child.type %}{% when 'text' %}<p class="nested"></p>{% endcase %}{% endfor %}</div>`,
+    })
+    const tree = await sectionExpectations(root, 'sections/s.liquid')
+    expect(tree).toHaveLength(1)
+    expect(tree[0]).toMatchObject({ file: 'blocks/group.liquid', instances: [{ id: 'fixed-group', type: 'group' }], callSites: [{ file: 'sections/s.liquid', line: 1 }] })
+
+    const nested = await sectionExpectations(root, 'blocks/group.liquid', [{ id: 'text-a', type: 'text', blocks: [] }])
+    expect(nested[0]).toMatchObject({ kind: 'block', file: 'blocks/group.liquid', label: 'text', instances: [{ id: 'text-a', type: 'text' }] })
   })
 
   it('is empty for a missing section file', async () => {

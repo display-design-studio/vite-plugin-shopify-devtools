@@ -53,6 +53,7 @@ export interface FileGraph {
   renderCalls: RenderCall[]
   slots: Slot[]
   contentForBlocks: boolean
+  staticBlocks: Array<{ id: string; type: string; line: number }>
 }
 
 const DYNAMIC = '\u0000'
@@ -108,14 +109,16 @@ const lookupPath = (markup: unknown): string => {
   return lookup?.name ? [lookup.name, ...(lookup.lookups ?? []).map((part) => part.value ?? '')].join('.') : ''
 }
 
-function isBlockLoop(node: Node): boolean {
-  return node.type === 'LiquidTag' && node.name === 'for' && lookupPath((node.markup as { collection?: unknown })?.collection) === 'section.blocks'
+function blockLoopVariable(node: Node): string | undefined {
+  if (node.type !== 'LiquidTag' || node.name !== 'for') return
+  const markup = node.markup as { collection?: unknown; variableName?: unknown }
+  return /^(section|block)\.blocks$/.test(lookupPath(markup.collection)) && typeof markup.variableName === 'string' ? markup.variableName : undefined
 }
 
-function findCase(nodes: Node[] = []): Node | undefined {
+function findCase(nodes: Node[] = [], variable = 'block'): Node | undefined {
   for (const node of nodes) {
-    if (node.type === 'LiquidTag' && node.name === 'case' && lookupPath(node.markup) === 'block.type') return node
-    const nested = findCase(node.children)
+    if (node.type === 'LiquidTag' && node.name === 'case' && lookupPath(node.markup) === `${variable}.type`) return node
+    const nested = findCase(node.children, variable)
     if (nested) return nested
   }
 }
@@ -124,20 +127,32 @@ export function analyze(source: string): FileGraph {
   const ast = toLiquidHtmlAST(source) as unknown as Node
   const slots: Slot[] = []
   let contentForBlocks = false
+  const staticBlocks: FileGraph['staticBlocks'] = []
 
   const collect = (nodes: Node[] = [], into: RenderCall[], file = ''): void => {
     for (const node of nodes) {
-      if (isBlockLoop(node)) { slots.push(...slotsOf(node)); continue }
+      if (blockLoopVariable(node)) { slots.push(...slotsOf(node)); continue }
       const name = staticRenderName(node, source)
       if (name) into.push({ name, file, line: lineAt(source, node.position?.start ?? 0) })
-      if (node.type === 'LiquidTag' && node.name === 'content_for' && node.position && /content_for\s+['"]blocks['"]/.test(source.slice(node.position.start, node.position.end))) contentForBlocks = true
+      if (node.type === 'LiquidTag' && node.name === 'content_for') {
+        const markup = node.markup as { contentForType?: { value?: unknown }; args?: Array<{ name?: unknown; value?: { value?: unknown } }> }
+        if (markup.contentForType?.value === 'blocks') contentForBlocks = true
+        if (markup.contentForType?.value === 'block') {
+          const value = (name: string): string | undefined => {
+            const found = markup.args?.find((argument) => argument.name === name)?.value?.value
+            return typeof found === 'string' && NAME.test(found) ? found : undefined
+          }
+          const type = value('type'); const id = value('id')
+          if (type && id) staticBlocks.push({ type, id, line: lineAt(source, node.position?.start ?? 0) })
+        }
+      }
       collect(node.children, into)
     }
   }
 
   const slotsOf = (loop: Node): Slot[] => {
     const body = (loop.children ?? []).filter((branch) => branch.name !== 'else').flatMap((branch) => branch.children ?? [])
-    const caseTag = findCase(body)
+    const caseTag = findCase(body, blockLoopVariable(loop) ?? 'block')
     const at = (node: Node): number => lineAt(source, node.position?.start ?? loop.position?.start ?? 0)
     if (!caseTag) {
       const renderCalls: RenderCall[] = []
@@ -154,7 +169,7 @@ export function analyze(source: string): FileGraph {
 
   const renderCalls: RenderCall[] = []
   collect(ast.children, renderCalls)
-  return { roots: usableRoots(topElements(ast.children)), renders: unique(renderCalls.map((call) => call.name)), renderCalls, slots, contentForBlocks }
+  return { roots: usableRoots(topElements(ast.children)), renders: unique(renderCalls.map((call) => call.name)), renderCalls, slots, contentForBlocks, staticBlocks }
 }
 
 const cache = new Map<string, { mtime: number; graph: FileGraph }>()
@@ -207,6 +222,20 @@ async function childExpectations(root: string, file: string, graph: FileGraph, b
       const instances = blocks.filter((block) => !type || block.type === type).map(({ id, type: blockType, settings, sourceFile, sourceLine }) => ({ id, type: blockType, settings, sourceFile, sourceLine }))
       out.push({ kind: 'block', file, line: slot.line, label: type ?? 'block', roots: slot.roots, children, instances })
     }
+  }
+
+  for (const type of unique(graph.staticBlocks.map((block) => block.type))) {
+    const blockFile = `blocks/${type}.liquid`
+    const blockGraph = await loadGraph(root, blockFile)
+    if (!blockGraph) continue
+    const instances = graph.staticBlocks.filter((block) => block.type === type)
+    const children = await childExpectations(root, blockFile, blockGraph, [], depth + 1, trail)
+    if (!blockGraph.roots.length) { out.push(...children); continue }
+    out.push({
+      kind: 'block', file: blockFile, line: 1, label: type, roots: blockGraph.roots, children,
+      instances: instances.map(({ id }) => ({ id, type })),
+      callSites: instances.map(({ line }) => ({ file, line })),
+    })
   }
 
   if (graph.contentForBlocks && depth <= MAX_DEPTH) {
