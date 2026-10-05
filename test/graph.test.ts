@@ -64,6 +64,12 @@ describe('analyze', () => {
     expect(graph.slots).toHaveLength(1)
     expect(graph.slots[0]).toMatchObject({ types: ['text'], roots: [{ tag: 'p', classes: ['nested'], attrs: {} }] })
   })
+
+  it('records Shopify block identity attributes even on otherwise generic roots', () => {
+    const inline = analyze(`{% for block in section.blocks %}<div {{ block.shopify_attributes }}></div>{% endfor %}`)
+    expect(inline.slots[0]).toMatchObject({ roots: [], shopifyAttributes: true })
+    expect(analyze(`<div {{ block.shopify_attributes }}></div>`)).toMatchObject({ roots: [], shopifyAttributes: true })
+  })
 })
 
 describe('sectionExpectations', () => {

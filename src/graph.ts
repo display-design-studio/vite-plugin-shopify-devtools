@@ -34,6 +34,8 @@ export interface Expectation {
   instances?: BlockInstance[]
   /** Static render call sites in the parent Liquid file, in runtime order when known. */
   callSites?: SourceReference[]
+  /** The component's root prints Shopify's runtime block identity attribute. */
+  shopifyAttributes?: boolean
 }
 
 export interface SourceReference { file: string; line: number }
@@ -45,6 +47,7 @@ interface Slot {
   renders: string[]
   renderCalls: RenderCall[]
   line: number
+  shopifyAttributes: boolean
 }
 
 export interface FileGraph {
@@ -54,6 +57,7 @@ export interface FileGraph {
   slots: Slot[]
   contentForBlocks: boolean
   staticBlocks: Array<{ id: string; type: string; line: number }>
+  shopifyAttributes: boolean
 }
 
 const DYNAMIC = '\u0000'
@@ -61,7 +65,7 @@ const NAME = /^[A-Za-z0-9_.-]+$/
 const MAX_DEPTH = 5
 const MAX_ROOTS = 4
 
-type Node = AstNode & { children?: Node[]; attributes?: Node[]; value?: unknown; markup?: unknown }
+type Node = AstNode & { children?: Node[]; attributes?: Node[]; value?: unknown; markup?: unknown; blockStartPosition?: { start: number; end: number } }
 
 // The parser keeps `<svg>` as a raw node whose name is a plain string; script and style never render anything to match.
 const isElement = (node: Node): boolean => node.type === 'HtmlElement' || node.type === 'HtmlVoidElement' || node.type === 'HtmlSelfClosingElement' || (node.type === 'HtmlRawNode' && node.name === 'svg')
@@ -103,6 +107,12 @@ const usableRoots = (elements: Node[]): Signature[] => elements
   .map(signatureOf)
   .filter((signature): signature is Signature => !!signature && signatureWeight(signature) > 0)
   .slice(0, MAX_ROOTS)
+
+const printsShopifyAttributes = (elements: Node[], variable: string, source: string): boolean => elements.some((element) => {
+  const start = element.position?.start
+  const end = element.blockStartPosition?.end ?? element.position?.end
+  return typeof start === 'number' && typeof end === 'number' && new RegExp(`\\b${variable}\\.shopify_attributes\\b`).test(source.slice(start, end))
+})
 
 const lookupPath = (markup: unknown): string => {
   const lookup = markup as { name?: string; lookups?: Array<{ value?: string }> } | undefined
@@ -152,24 +162,28 @@ export function analyze(source: string): FileGraph {
 
   const slotsOf = (loop: Node): Slot[] => {
     const body = (loop.children ?? []).filter((branch) => branch.name !== 'else').flatMap((branch) => branch.children ?? [])
-    const caseTag = findCase(body, blockLoopVariable(loop) ?? 'block')
+    const variable = blockLoopVariable(loop) ?? 'block'
+    const caseTag = findCase(body, variable)
     const at = (node: Node): number => lineAt(source, node.position?.start ?? loop.position?.start ?? 0)
     if (!caseTag) {
       const renderCalls: RenderCall[] = []
       collect(body, renderCalls)
-      return [{ types: null, roots: usableRoots(topElements(body)), renders: unique(renderCalls.map((call) => call.name)), renderCalls, line: at(loop) }]
+      const elements = topElements(body)
+      return [{ types: null, roots: usableRoots(elements), renders: unique(renderCalls.map((call) => call.name)), renderCalls, line: at(loop), shopifyAttributes: printsShopifyAttributes(elements, variable, source) }]
     }
     return (caseTag.children ?? []).filter((branch) => branch.name === 'when').map((branch) => {
       const renderCalls: RenderCall[] = []
       collect(branch.children, renderCalls)
       const types = (Array.isArray(branch.markup) ? branch.markup as Node[] : []).map((value) => String(value.value)).filter((value) => NAME.test(value))
-      return { types, roots: usableRoots(topElements(branch.children)), renders: unique(renderCalls.map((call) => call.name)), renderCalls, line: at(branch) }
+      const elements = topElements(branch.children)
+      return { types, roots: usableRoots(elements), renders: unique(renderCalls.map((call) => call.name)), renderCalls, line: at(branch), shopifyAttributes: printsShopifyAttributes(elements, variable, source) }
     })
   }
 
   const renderCalls: RenderCall[] = []
   collect(ast.children, renderCalls)
-  return { roots: usableRoots(topElements(ast.children)), renders: unique(renderCalls.map((call) => call.name)), renderCalls, slots, contentForBlocks, staticBlocks }
+  const rootElements = topElements(ast.children)
+  return { roots: usableRoots(rootElements), renders: unique(renderCalls.map((call) => call.name)), renderCalls, slots, contentForBlocks, staticBlocks, shopifyAttributes: printsShopifyAttributes(rootElements, 'block', source) }
 }
 
 const cache = new Map<string, { mtime: number; graph: FileGraph }>()
@@ -217,10 +231,10 @@ async function childExpectations(root: string, file: string, graph: FileGraph, b
 
   for (const slot of graph.slots) {
     const children = await snippetExpectations(root, withFile(slot.renderCalls), depth + 1, trail)
-    if (!slot.roots.length) { out.push(...children); continue }
+    if (!slot.roots.length && !slot.shopifyAttributes) { out.push(...children); continue }
     for (const type of slot.types ?? [null]) {
       const instances = blocks.filter((block) => !type || block.type === type).map(({ id, type: blockType, settings, sourceFile, sourceLine }) => ({ id, type: blockType, settings, sourceFile, sourceLine }))
-      out.push({ kind: 'block', file, line: slot.line, label: type ?? 'block', roots: slot.roots, children, instances })
+      out.push({ kind: 'block', file, line: slot.line, label: type ?? 'block', roots: slot.roots, children, instances, shopifyAttributes: slot.shopifyAttributes })
     }
   }
 
@@ -230,11 +244,12 @@ async function childExpectations(root: string, file: string, graph: FileGraph, b
     if (!blockGraph) continue
     const instances = graph.staticBlocks.filter((block) => block.type === type)
     const children = await childExpectations(root, blockFile, blockGraph, [], depth + 1, trail)
-    if (!blockGraph.roots.length) { out.push(...children); continue }
+    if (!blockGraph.roots.length && !blockGraph.shopifyAttributes) { out.push(...children); continue }
     out.push({
       kind: 'block', file: blockFile, line: 1, label: type, roots: blockGraph.roots, children,
       instances: instances.map(({ id }) => ({ id, type })),
       callSites: instances.map(({ line }) => ({ file, line })),
+      shopifyAttributes: blockGraph.shopifyAttributes,
     })
   }
 
@@ -245,8 +260,8 @@ async function childExpectations(root: string, file: string, graph: FileGraph, b
       if (!blockGraph) continue
       const same = blocks.filter((block) => block.type === type)
       const children = await childExpectations(root, blockFile, blockGraph, same.flatMap((block) => block.blocks), depth + 1, trail)
-      if (!blockGraph.roots.length) { out.push(...children); continue }
-      out.push({ kind: 'block', file: blockFile, line: 1, label: type, roots: blockGraph.roots, children, instances: same.map(({ id, type: blockType, settings, sourceFile, sourceLine }) => ({ id, type: blockType, settings, sourceFile, sourceLine })) })
+      if (!blockGraph.roots.length && !blockGraph.shopifyAttributes) { out.push(...children); continue }
+      out.push({ kind: 'block', file: blockFile, line: 1, label: type, roots: blockGraph.roots, children, instances: same.map(({ id, type: blockType, settings, sourceFile, sourceLine }) => ({ id, type: blockType, settings, sourceFile, sourceLine })), shopifyAttributes: blockGraph.shopifyAttributes })
     }
   }
   return out

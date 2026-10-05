@@ -60,6 +60,8 @@ Shopify leaves no trace of blocks and snippets in the HTML it renders, so in the
 
 Both dynamic block regions (`{% content_for 'blocks' %}` and loops over `section.blocks` or nested `block.blocks`) and fixed `{% content_for 'block', type: '…', id: '…' %}` calls are represented. Static block entries retain their declared ID and can open the Liquid call site from the details panel.
 
+When a block root prints `{{ block.shopify_attributes }}` (or the corresponding custom loop variable), the panel uses Shopify's runtime block ID and type directly. This identifies generic block roots that have no distinctive static class or attribute and prevents similarly shaped block types from being confused.
+
 Changes to template JSON, section groups, sections, blocks, and snippets invalidate the resolved tree automatically; the open panel refreshes without requiring a page reload.
 
 It is a best effort, tuned to prefer showing nothing over showing something wrong:

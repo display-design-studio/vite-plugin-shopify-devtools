@@ -70,4 +70,14 @@ describe('inferNodes', () => {
     expect(nodes.map((node) => node.label)).toEqual(['feature · a', 'feature · b', 'feature'])
     expect(nodes.map((node) => node.shopifyId)).toEqual(['a', 'b', undefined])
   })
+
+  it('uses Shopify block attributes to match generic roots and reject another block type', () => {
+    const block: Expectation = {
+      kind: 'block', file: 'blocks/text.liquid', line: 1, label: 'text', roots: [], children: [], shopifyAttributes: true,
+      instances: [{ id: 'text-a', type: 'text' }],
+    }
+    const nodes = run(`<div data-shopify-editor-block='{"id":"other","type":"image"}'></div><div data-shopify-editor-block='{"id":"text-a","type":"text"}'></div><div data-shopify-editor-block='bad'></div>`, [block])
+    expect(nodes).toHaveLength(1)
+    expect(nodes[0]).toMatchObject({ file: 'blocks/text.liquid', shopifyId: 'text-a' })
+  })
 })

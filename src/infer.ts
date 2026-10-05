@@ -7,7 +7,7 @@ export interface InferContext {
 }
 
 const signatureWeight = (signature: Signature): number => signature.classes.length + 2 * Object.keys(signature.attrs).length
-const weightOf = (expectation: Expectation): number => Math.max(...expectation.roots.map(signatureWeight))
+const weightOf = (expectation: Expectation): number => Math.max(0, ...expectation.roots.map(signatureWeight))
 const sizeOf = (expectation: Expectation): number => expectation.children.reduce((total, child) => total + 1 + sizeOf(child), 0)
 
 /** More specific markup wins an element; between equals, the component that contains more explains more. */
@@ -23,9 +23,23 @@ const inDocumentOrder = (a: Element, b: Element): number => a === b ? 0 : a.comp
 
 function findMatches(scope: Element, expectation: Expectation, claimed: Set<Element>): Element[] {
   const found = new Set<Element>()
+  const matchesIdentity = (element: Element): boolean => {
+    const raw = element.getAttribute('data-shopify-editor-block')
+    try {
+      const identity = JSON.parse(raw ?? '') as { id?: unknown; type?: unknown }
+      return !!expectation.instances?.some((instance) => instance.id === identity.id && instance.type === identity.type)
+    } catch { return false }
+  }
   for (const tag of new Set(expectation.roots.map((signature) => signature.tag))) {
     for (const element of scope.getElementsByTagName(tag)) {
-      if (!claimed.has(element) && expectation.roots.some((signature) => matchesSignature(element, signature))) found.add(element)
+      if (!claimed.has(element) && expectation.roots.some((signature) => matchesSignature(element, signature))
+        && (!expectation.shopifyAttributes || !element.hasAttribute('data-shopify-editor-block') || matchesIdentity(element))) found.add(element)
+    }
+  }
+  if (expectation.shopifyAttributes) {
+    for (const element of scope.querySelectorAll('[data-shopify-editor-block]')) {
+      if (claimed.has(element)) continue
+      if (matchesIdentity(element)) found.add(element)
     }
   }
   return [...found]
