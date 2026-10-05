@@ -74,9 +74,10 @@ describe('sectionExpectations', () => {
       'blocks/text.liquid': `<p class="text"></p>`,
     })
     const tree = await sectionExpectations(root, 'sections/s.liquid', [
-      { id: 'g', type: 'group', blocks: [{ id: 't1', type: 'text', blocks: [] }, { id: 't2', type: 'text', blocks: [] }] },
+      { id: 'g', type: 'group', settings: { layout: 'stack' }, sourceFile: 'templates/index.json', sourceLine: 8, blocks: [{ id: 't1', type: 'text', blocks: [] }, { id: 't2', type: 'text', blocks: [] }] },
     ])
     expect(tree.map((entry) => [entry.file, entry.instances?.map((instance) => instance.id)])).toEqual([['blocks/group.liquid', ['g']]])
+    expect(tree[0].instances?.[0]).toMatchObject({ settings: { layout: 'stack' }, sourceFile: 'templates/index.json', sourceLine: 8 })
     expect(tree[0].children.map((entry) => [entry.file, entry.instances?.map((instance) => instance.id)])).toEqual([['blocks/text.liquid', ['t1', 't2']]])
   })
 

@@ -43,7 +43,7 @@ Open **Shopify Liquid** from the Vite DevTools dock. Use **Inspect page** in the
 
 Use the search field to filter by component name, theme-relative path, kind, JSON section key or name, and the **Template** or **Section group** badge. Matching entries keep their ancestors visible and expand their paths temporarily. Disclosure arrows collapse branches, and that state is saved for the current storefront origin.
 
-The tree supports standard keyboard navigation: Up and Down move through visible entries, Right expands a branch or enters its first child, Left collapses it or moves to its parent, and Enter opens the focused component in your editor. Selecting an entry brings it into view in the tree without moving the storefront page. The details card can copy the relative source path, `file:line` location, and Shopify ID when one is available.
+The tree supports standard keyboard navigation: Up and Down move through visible entries, Right expands a branch or enters its first child, Left collapses it or moves to its parent, and Enter opens the focused component in your editor. Selecting an entry brings it into view in the tree without moving the storefront page. The details card can copy the relative source path, `file:line` location, and Shopify ID when one is available. Inferred block entries also show their JSON settings read-only and can open the owning template or section-group JSON directly at the block key.
 
 ## What it detects
 

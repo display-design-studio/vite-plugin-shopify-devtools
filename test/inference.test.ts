@@ -126,5 +126,8 @@ describe('inference against the exact tree', () => {
 
     const group = all.find((node) => node.file === 'blocks/group.liquid')
     expect(group?.children.map((child) => child.shopifyId)).toEqual(['text_a', 'text_b'])
+    expect(group?.instanceSourceFile).toBe('templates/index.json')
+    expect(group?.instanceSourceLine).toBeGreaterThan(1)
+    expect(group?.settings).toEqual(expect.any(Object))
   })
 })

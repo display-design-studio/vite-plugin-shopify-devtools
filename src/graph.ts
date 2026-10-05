@@ -13,6 +13,9 @@ export interface Signature {
 export interface BlockInstance {
   id: string
   type: string
+  settings?: Record<string, unknown>
+  sourceFile?: string
+  sourceLine?: number
 }
 
 export interface JsonBlock extends BlockInstance {
@@ -187,7 +190,7 @@ async function childExpectations(root: string, file: string, graph: FileGraph, b
     const children = await snippetExpectations(root, slot.renders, depth + 1, trail)
     if (!slot.roots.length) { out.push(...children); continue }
     for (const type of slot.types ?? [null]) {
-      const instances = blocks.filter((block) => !type || block.type === type).map(({ id, type: blockType }) => ({ id, type: blockType }))
+      const instances = blocks.filter((block) => !type || block.type === type).map(({ id, type: blockType, settings, sourceFile, sourceLine }) => ({ id, type: blockType, settings, sourceFile, sourceLine }))
       out.push({ kind: 'block', file, line: slot.line, label: type ?? 'block', roots: slot.roots, children, instances })
     }
   }
@@ -200,7 +203,7 @@ async function childExpectations(root: string, file: string, graph: FileGraph, b
       const same = blocks.filter((block) => block.type === type)
       const children = await childExpectations(root, blockFile, blockGraph, same.flatMap((block) => block.blocks), depth + 1, trail)
       if (!blockGraph.roots.length) { out.push(...children); continue }
-      out.push({ kind: 'block', file: blockFile, line: 1, label: type, roots: blockGraph.roots, children, instances: same.map(({ id, type: blockType }) => ({ id, type: blockType })) })
+      out.push({ kind: 'block', file: blockFile, line: 1, label: type, roots: blockGraph.roots, children, instances: same.map(({ id, type: blockType, settings, sourceFile, sourceLine }) => ({ id, type: blockType, settings, sourceFile, sourceLine })) })
     }
   }
   return out

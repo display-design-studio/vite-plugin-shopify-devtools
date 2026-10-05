@@ -216,6 +216,29 @@ describe('pages without markers', () => {
     expect(rpcCall).toHaveBeenCalledWith('shopify-devtools:resolve-sections', expect.objectContaining({ ids: expect.arrayContaining(['shopify-section-template--1__hero']) }))
   })
 
+  it('shows inferred block settings and opens the owning JSON at its key', async () => {
+    rpcCall.mockClear()
+    rpcCall.mockImplementation(async (name: string) => name === 'shopify-devtools:resolve-sections'
+      ? {
+          'shopify-section-template--9__settings': {
+            file: 'sections/settings-demo.liquid', line: 1, kind: 'section', origin: 'template', instanceKey: 'settings',
+            tree: [{
+              kind: 'block', file: 'blocks/text.liquid', line: 1, label: 'text', roots: [{ tag: 'p', classes: ['copy'], attrs: {} }], children: [],
+              instances: [{ id: 'copy_a', type: 'text', settings: { heading: 'Hello', enabled: true }, sourceFile: 'templates/index.json', sourceLine: 42 }],
+            }],
+          },
+        }
+      : { ok: true })
+    document.body.innerHTML = '<div id="shopify-section-template--9__settings"><p class="copy">Hello</p></div>'
+    document.dispatchEvent(new Event('shopify:section:load'))
+    const shadow = document.querySelector('shopify-liquid-devtools')?.shadowRoot
+    await vi.waitFor(() => expect(shadow?.querySelectorAll('.tree-item')).toHaveLength(2))
+    ;(shadow?.querySelectorAll('.tree-item')[1] as HTMLButtonElement).click()
+    expect(shadow?.querySelector('.settings')?.textContent).toContain('"heading": "Hello"')
+    ;(shadow?.querySelector('.open-source') as HTMLButtonElement).click()
+    await vi.waitFor(() => expect(rpcCall).toHaveBeenCalledWith('shopify-devtools:open-in-editor', { file: 'templates/index.json', line: 42 }))
+  })
+
   it('says so when the page has no sections at all', async () => {
     document.body.innerHTML = '<main>Plain page</main>'
     const shadow = document.querySelector('shopify-liquid-devtools')?.shadowRoot

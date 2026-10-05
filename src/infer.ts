@@ -73,6 +73,9 @@ export function inferNodes(scope: Element, expectations: Expectation[], context:
       shopifyId: instance?.id,
       inferred: true,
       label: expectation.label ? `${expectation.label}${instance ? ` · ${instance.id}` : ''}` : undefined,
+      settings: instance?.settings,
+      instanceSourceFile: instance?.sourceFile,
+      instanceSourceLine: instance?.sourceLine,
     }
     node.children = inferNodes(element, expectation.children, context, node, claimed)
     nodes.push(node)

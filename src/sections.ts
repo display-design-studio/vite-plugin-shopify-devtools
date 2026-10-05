@@ -44,25 +44,34 @@ export function parseJsonc(text: string): unknown {
 }
 
 type Candidate = { owner: string; ownerFilename: string; key?: string; name?: string; type: string; blocks: JsonBlock[] }
-type RawBlock = { type?: unknown; name?: unknown; disabled?: unknown; blocks?: Record<string, RawBlock>; block_order?: unknown }
+type RawBlock = { type?: unknown; name?: unknown; settings?: unknown; disabled?: unknown; blocks?: Record<string, RawBlock>; block_order?: unknown }
+
+const lineOfKey = (text: string, key: string): number => {
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const match = new RegExp(`"${escaped}"\\s*:`).exec(text)
+  return match ? text.slice(0, match.index).split('\n').length : 1
+}
 
 /** Blocks of a section or block in the order Shopify renders them, without the disabled ones. */
-function normalizeBlocks(raw: RawBlock | undefined): JsonBlock[] {
+function normalizeBlocks(raw: RawBlock | undefined, text: string, sourceFile: string): JsonBlock[] {
   const blocks = raw?.blocks ?? {}
   const order = Array.isArray(raw?.block_order) ? raw.block_order.filter((id): id is string => typeof id === 'string') : Object.keys(blocks)
   return order.flatMap((id) => {
     const block = blocks[id]
     if (!block || block.disabled === true || typeof block.type !== 'string' || !SECTION_NAME.test(block.type)) return []
-    return [{ id, type: block.type, blocks: normalizeBlocks(block) }]
+    const settings = block.settings && typeof block.settings === 'object' && !Array.isArray(block.settings) ? block.settings as Record<string, unknown> : undefined
+    return [{ id, type: block.type, settings, sourceFile, sourceLine: lineOfKey(text, id), blocks: normalizeBlocks(block, text, sourceFile) }]
   })
 }
 
 async function readSectionTypes(file: string): Promise<Array<[string, { type: string; blocks: JsonBlock[] }]>> {
   try {
-    const data = parseJsonc(await readFile(file, 'utf8')) as { sections?: Record<string, RawBlock> }
+    const text = await readFile(file, 'utf8')
+    const data = parseJsonc(text) as { sections?: Record<string, RawBlock> }
+    const sourceFile = path.relative(path.dirname(path.dirname(file)), file).split(path.sep).join('/')
     return Object.entries(data?.sections ?? {})
       .filter((entry): entry is [string, RawBlock & { type: string }] => typeof entry[1]?.type === 'string' && SECTION_NAME.test(entry[1].type))
-      .map(([key, value]) => [key, { type: value.type, name: typeof value.name === 'string' ? value.name : undefined, blocks: normalizeBlocks(value) }])
+      .map(([key, value]) => [key, { type: value.type, name: typeof value.name === 'string' ? value.name : undefined, blocks: normalizeBlocks(value, text, sourceFile) }])
   } catch { return [] }
 }
 

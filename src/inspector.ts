@@ -1,5 +1,6 @@
 import type { DockClientScriptContext } from '@vitejs/devtools-kit/client'
 import type { ComponentSource } from './protocol.js'
+import type { BlockInstance, Expectation } from './graph.js'
 import { compareTrees, inferNodes, type InferenceReport } from './infer.js'
 import type { ResolvedSection } from './sections.js'
 
@@ -19,6 +20,9 @@ export interface ComponentNode extends ComponentSource {
   owner?: string
   ownerFilename?: string
   origin?: 'template' | 'section-group' | 'static'
+  settings?: Record<string, unknown>
+  instanceSourceFile?: string
+  instanceSourceLine?: number
 }
 
 export interface RpcCaller {
@@ -59,6 +63,15 @@ function fallbackRoot(node: ComponentNode, start: Comment): Element[] {
   return node.parent?.roots ?? [first]
 }
 
+function shopifyIdentity(value: string | null | undefined): string | undefined {
+  if (!value) return
+  try {
+    const parsed = JSON.parse(value) as { id?: unknown }
+    if (typeof parsed.id === 'string') return parsed.id
+  } catch { /* Plain ids are also used outside the theme editor. */ }
+  return value
+}
+
 export function componentTree(root: ParentNode = document): ComponentNode[] {
   const iterator = document.createNodeIterator(root, NodeFilter.SHOW_COMMENT)
   const roots: ComponentNode[] = []
@@ -87,7 +100,7 @@ export function componentTree(root: ParentNode = document): ComponentNode[] {
       const identityRoot = node.kind === 'section'
         ? node.roots[0]?.closest('[id^="shopify-section-"]')
         : node.kind === 'block' ? node.roots[0]?.closest('[data-shopify-editor-block]') : node.roots[0]
-      node.shopifyId = identityRoot?.id || identityRoot?.getAttribute('data-shopify-editor-block') || undefined
+      node.shopifyId = identityRoot?.id || shopifyIdentity(identityRoot?.getAttribute('data-shopify-editor-block'))
     }
   }
   for (const { node } of flatten(roots)) if (!node.roots.length && node.parent) node.roots = node.parent.roots
@@ -200,11 +213,22 @@ export class InspectorController {
       if (this.tree !== tree) return
       for (const node of sections) {
         const id = node.roots[0]?.closest<HTMLElement>('[id^="shopify-section-"]')?.id
-        const source = id && resolved[id]
+        const source = id ? resolved[id] : undefined
         if (source) Object.assign(node, {
           instanceKey: source.instanceKey, instanceName: source.instanceName, owner: source.owner,
           ownerFilename: source.ownerFilename, origin: source.origin,
         })
+        if (source?.tree) {
+          const instances = source.tree.flatMap(function collect(expectation: Expectation): Array<{ file: string, instance: BlockInstance }> {
+            return [...(expectation.instances ?? []).map((instance) => ({ file: expectation.file, instance })), ...expectation.children.flatMap(collect)]
+          })
+          for (const descendant of flatten(node.children).map((entry) => entry.node)) {
+            const match = instances.find(({ file, instance }) => file === descendant.file && instance.id === descendant.shopifyId)
+            if (match) Object.assign(descendant, {
+              settings: match.instance.settings, instanceSourceFile: match.instance.sourceFile, instanceSourceLine: match.instance.sourceLine,
+            })
+          }
+        }
       }
       this.#emit()
     } catch { /* Exact marker data remains usable if optional metadata lookup fails. */ }
@@ -314,10 +338,14 @@ export class InspectorController {
   }
 
   async openEditor(node: ComponentNode): Promise<void> {
+    return this.openSource(node.file, node.line)
+  }
+
+  async openSource(file: string, line: number): Promise<void> {
     if (!this.rpc) throw new Error('DevTools RPC is unavailable. Restart the Vite development server.')
     this.error = undefined
     try {
-      await this.rpc.call('shopify-devtools:open-in-editor', { file: node.file, line: node.line })
+      await this.rpc.call('shopify-devtools:open-in-editor', { file, line })
     } catch (error) {
       this.error = error instanceof Error ? error : new Error('Could not open the editor')
       this.#emit()
