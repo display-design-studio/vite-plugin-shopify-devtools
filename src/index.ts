@@ -7,6 +7,7 @@ import path from 'node:path'
 import { defaultAllowedOrigins, loadEnv, version as viteVersion, type Plugin, type ViteDevServer } from 'vite'
 import { INSPECT_ICON } from './inspect-icon.js'
 import { resolveSections } from './sections.js'
+import { invalidateGraph } from './graph.js'
 
 const CLIENT_ID = '\0virtual:shopify-devtools/client'
 const RENDERER_PUBLIC_ID = 'virtual:shopify-devtools/renderer'
@@ -213,6 +214,7 @@ export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): P
   let serve = false
   let docks: { views?: Map<string, unknown>; update(entry: never): void; events?: { on(event: 'docks:entry:updated', handler: (entry: DockEntry) => void): unknown } } | undefined
   let origin: string | undefined
+  let broadcastSourcesChanged: (() => void) | undefined
   const fixDock = (entry: DockEntry): void => {
     const url = origin ? absoluteDockUrl(entry, origin) : undefined
     if (url) docks?.update({ ...entry, url } as never)
@@ -228,6 +230,7 @@ export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): P
     },
     devtools: {
       setup(context) {
+        broadcastSourcesChanged = () => context.rpc.broadcast({ method: 'shopify-devtools:sources-changed', args: [], optional: true } as never)
         docks = context.docks as unknown as typeof docks
         docks?.events?.on('docks:entry:updated', fixDock)
         // Vite's built-in group uses an absolute /__devtools-assets URL. In a
@@ -291,6 +294,18 @@ export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): P
         for (const entry of docks?.views?.values() ?? []) fixDock(entry as DockEntry)
       }
       if (server.httpServer?.listening) ready(); else server.httpServer?.once('listening', ready)
+      const themeRoot = resolveThemeRoot(server.config)
+      const changed = (file: string): void => {
+        const relative = toPosix(path.relative(themeRoot, file))
+        if (relative.startsWith('../') || path.isAbsolute(relative)) return
+        if (/^(templates(?:\/customers)?\/[^/]+\.json|sections\/[^/]+\.json|(?:sections|blocks|snippets)\/[^/]+\.liquid)$/.test(relative)) {
+          if (relative.endsWith('.liquid')) invalidateGraph(file)
+          broadcastSourcesChanged?.()
+        }
+      }
+      server.watcher?.on('add', changed)
+      server.watcher?.on('change', changed)
+      server.watcher?.on('unlink', changed)
     },
     configResolved(config) {
       serve = config.command === 'serve'
@@ -318,4 +333,3 @@ export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): P
 
 export { instrumentLiquid } from './instrument.js'
 export { createThemeMirror } from './mirror.js'
-

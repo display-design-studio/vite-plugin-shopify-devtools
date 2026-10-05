@@ -493,7 +493,13 @@ dl{display:grid;grid-template-columns:90px minmax(0,1fr);gap:8px 14px;margin:14p
 if (!customElements.get('shopify-liquid-devtools')) customElements.define('shopify-liquid-devtools', ShopifyDevtools)
 
 export default function setupShopifyDevtools(context: DockClientScriptContext): void {
-  getInspectorController().setRpc(context.rpc)
+  const controller = getInspectorController()
+  controller.setRpc(context.rpc)
+  context.rpc.client?.register({
+    name: 'shopify-devtools:sources-changed',
+    type: 'action',
+    setup: () => ({ handler: () => controller.invalidateSections() }),
+  } as never)
   deactivateInspectorOnDevtoolsNavigation(context)
   const mount = (panel: HTMLElement): void => {
     const host = (panel.querySelector('shopify-liquid-devtools') ?? document.createElement('shopify-liquid-devtools')) as ShopifyDevtools

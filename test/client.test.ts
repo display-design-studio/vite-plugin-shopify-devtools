@@ -7,6 +7,7 @@ let client: typeof import('../src/client.js')
 let getInspectorController: typeof import('../src/inspector.js').getInspectorController
 let nativePanel: HTMLDivElement
 const rpcCall = vi.fn<(name: string, input?: unknown) => Promise<unknown>>(async () => ({ ok: true }))
+let sourcesChanged: (() => void) | undefined
 
 beforeAll(async () => {
   document.body.innerHTML = `<!--shopify-devtools:start:${marker}--><section id="shopify-section-hero" class="hero">Hello</section><!--shopify-devtools:end:${marker}-->`
@@ -16,7 +17,7 @@ beforeAll(async () => {
   document.documentElement.append(nativePanel)
   let mount: ((panel: HTMLElement) => void) | undefined
   client.default({
-    rpc: { call: rpcCall },
+    rpc: { call: rpcCall, client: { register: (definition: { name?: string, setup(): { handler(): void } }) => { if (definition.name === 'shopify-devtools:sources-changed') sourcesChanged = definition.setup().handler } } },
     current: {
       domElements: {},
       events: {
@@ -275,6 +276,22 @@ describe('pages without markers', () => {
     expect(shadow?.querySelector('.open-source')?.textContent).toBe('Open render call')
     ;(shadow?.querySelector('.open-source') as HTMLButtonElement).click()
     await vi.waitFor(() => expect(rpcCall).toHaveBeenCalledWith('shopify-devtools:open-in-editor', { file: 'sections/settings-demo.liquid', line: 12 }))
+  })
+
+  it('invalidates resolved sections after a theme source change', async () => {
+    let file = 'sections/before.liquid'
+    rpcCall.mockImplementation(async (name: string) => name === 'shopify-devtools:resolve-sections'
+      ? { 'shopify-section-template--33__refresh': { file, line: 1, kind: 'section', origin: 'template' } }
+      : { ok: true })
+    document.body.innerHTML = '<div id="shopify-section-template--33__refresh"></div>'
+    document.dispatchEvent(new Event('shopify:section:load'))
+    const shadow = document.querySelector('shopify-liquid-devtools')?.shadowRoot
+    await vi.waitFor(() => expect(shadow?.querySelector('#tree')?.textContent).toContain('before.liquid'))
+    const callsBefore = rpcCall.mock.calls.filter(([name]) => name === 'shopify-devtools:resolve-sections').length
+    file = 'sections/after.liquid'
+    sourcesChanged?.()
+    await vi.waitFor(() => expect(shadow?.querySelector('#tree')?.textContent).toContain('after.liquid'))
+    expect(rpcCall.mock.calls.filter(([name]) => name === 'shopify-devtools:resolve-sections')).toHaveLength(callsBefore + 1)
   })
 
   it('says so when the page has no sections at all', async () => {

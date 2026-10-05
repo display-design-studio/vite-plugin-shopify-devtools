@@ -124,6 +124,26 @@ describe('Vite plugin', () => {
     expect(update).toHaveBeenCalledTimes(2)
   })
 
+  it('broadcasts cache invalidation only for section-resolution theme sources', async () => {
+    const plugin = shopifyDevtools()
+    const broadcast = vi.fn()
+    await plugin.devtools?.setup?.({ docks: { register: vi.fn() }, rpc: { register: vi.fn(), broadcast }, viteConfig: { root: '/theme' } } as never)
+    const handlers = new Map<string, (file: string) => void>()
+    ;(plugin.configureServer as (server: unknown) => void)({
+      config: { root: '/theme', build: { outDir: 'assets' }, logger: { warn: vi.fn() }, server: {}, devtools: shopifyDevtoolsConfig },
+      resolvedUrls: { local: ['http://localhost:5173/'], network: [] },
+      httpServer: { listening: true },
+      watcher: { on: (event: string, handler: (file: string) => void) => { handlers.set(event, handler) } },
+    })
+    for (const file of ['/theme/templates/index.json', '/theme/templates/customers/account.json', '/theme/sections/header-group.json', '/theme/sections/hero.liquid', '/theme/blocks/text.liquid', '/theme/snippets/card.liquid']) handlers.get('change')?.(file)
+    handlers.get('add')?.('/theme/templates/new.json')
+    handlers.get('unlink')?.('/theme/snippets/old.liquid')
+    handlers.get('change')?.('/theme/assets/theme.js')
+    handlers.get('change')?.('/other/templates/index.json')
+    expect(broadcast).toHaveBeenCalledTimes(8)
+    expect(broadcast).toHaveBeenLastCalledWith({ method: 'shopify-devtools:sources-changed', args: [], optional: true })
+  })
+
   it('derives the theme root from the vite-plugin-shopify outDir', () => {
     expect(resolveThemeRoot({ root: '/project', build: { outDir: '/project/theme/assets' } })).toBe('/project/theme')
     expect(resolveThemeRoot({ root: '/project', build: { outDir: 'assets' } })).toBe('/project')

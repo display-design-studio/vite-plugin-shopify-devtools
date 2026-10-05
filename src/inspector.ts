@@ -29,6 +29,7 @@ export interface ComponentNode extends ComponentSource {
 
 export interface RpcCaller {
   call(name: string, input: unknown): Promise<unknown>
+  client?: { register(definition: unknown): void }
 }
 
 const decode = (value: string): ComponentSource => JSON.parse(atob(value))
@@ -195,6 +196,11 @@ export class InspectorController {
   }
 
   setRpc(rpc: unknown): void { this.rpc = rpc as RpcCaller }
+  invalidateSections(): void {
+    this.#sectionCache.clear()
+    this.#sectionRun++
+    this.refresh()
+  }
   setNavigationGuard(isBlocked: () => boolean): void { this.#isBlocked = isBlocked }
   subscribe(listener: Listener): () => void { this.#listeners.add(listener); listener(this); return () => this.#listeners.delete(listener) }
   refresh(): void {

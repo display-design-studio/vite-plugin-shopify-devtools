@@ -159,6 +159,11 @@ export function analyze(source: string): FileGraph {
 
 const cache = new Map<string, { mtime: number; graph: FileGraph }>()
 
+/** Drops parsed Liquid data after Vite reports a source mutation. */
+export function invalidateGraph(file?: string): void {
+  if (file) cache.delete(path.resolve(file)); else cache.clear()
+}
+
 async function loadGraph(root: string, file: string): Promise<FileGraph | undefined> {
   const absolute = path.join(root, file)
   try {
