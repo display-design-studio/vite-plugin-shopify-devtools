@@ -8,7 +8,7 @@ export default defineConfig({
   use: { baseURL: 'http://127.0.0.1:9292', trace: 'retain-on-failure' },
   webServer: [
     {
-      command: 'bunx vite --config test/browser/fixture/vite.config.ts',
+      command: 'bunx vite --config test/browser/fixture/vite.config.js',
       url: 'http://127.0.0.1:5173/@vite/client',
       reuseExistingServer: !process.env.CI,
     },
