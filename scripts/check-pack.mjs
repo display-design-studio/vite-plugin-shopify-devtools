@@ -46,7 +46,7 @@ function validateFiles(files) {
 
 function validateMetadata(manifest) {
   strictEqual(manifest.name, packageName, 'package name differs')
-  strictEqual(manifest.version, '0.3.0', 'package version differs')
+  strictEqual(manifest.version, '0.4.0', 'package version differs')
   strictEqual(manifest.type, 'module', 'package must remain ESM')
   strictEqual(manifest.license, 'MIT', 'package license must remain MIT')
   deepStrictEqual(manifest.files, ['dist', 'assets', 'README.md', 'CHANGELOG.md', 'LICENSE'], 'files allowlist differs')

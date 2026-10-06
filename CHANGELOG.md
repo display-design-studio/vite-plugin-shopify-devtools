@@ -4,6 +4,8 @@ All notable changes to this project are documented here. This project follows [K
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-06
+
 ### Added
 
 - Managed copy and recoverable in-place full-mode instrumentation.
@@ -35,7 +37,8 @@ All notable changes to this project are documented here. This project follows [K
 
 - Initial dock, Liquid inspector, editor integration, authenticated RPC, CLI wrapper, and full-mode instrumentation.
 
-[Unreleased]: https://github.com/display-design-studio/vite-plugin-shopify-devtools/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/display-design-studio/vite-plugin-shopify-devtools/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/display-design-studio/vite-plugin-shopify-devtools/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/display-design-studio/vite-plugin-shopify-devtools/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/display-design-studio/vite-plugin-shopify-devtools/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/display-design-studio/vite-plugin-shopify-devtools/releases/tag/v0.1.0

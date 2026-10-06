@@ -4,19 +4,19 @@
 [![npm downloads][npm-downloads-src]][npm-downloads-href]
 [![Build][build-src]][build-href]
 
-Development-only source inspection for Shopify Liquid themes, integrated into the official Vite DevTools dock. Hover or click rendered theme components, inspect their Liquid/DOM hierarchy, and open the defining section, theme block, or static snippet in your editor.
-
-![Liquid DevTools inspecting a Shopify theme in dark mode](https://raw.githubusercontent.com/display-design-studio/vite-plugin-shopify-devtools/main/docs/readme-preview.png)
+Inspect Shopify Liquid sections, blocks, and snippets from the official Vite DevTools dock. Pick a rendered component, understand its Liquid/DOM hierarchy, and open its source in your editor without changing production builds.
 
 ![Short demo of searching and selecting an inferred Liquid snippet](https://raw.githubusercontent.com/display-design-studio/vite-plugin-shopify-devtools/main/docs/devtools-demo.gif)
 
-## Setup
+## Quick start
+
+Vite 8.3 or newer is required and must be a direct project dependency.
 
 ```sh
-npm install -D @display-studio/vite-plugin-shopify-devtools
+npm install -D vite@^8.3 @display-studio/vite-plugin-shopify-devtools
 ```
 
-Vite 8.3 or newer is required, and it must be a direct dependency of your project (`npm install -D vite@^8.3`). Older Vite versions ignore the `devtools` option, so the browser console shows `Unable to load Vite DevTools connection metadata (404)`. Check your Vite version if you see it. The plugin enables Vite DevTools for `vite serve` and injects its embedded client through the configured JavaScript entry because Shopify, rather than Vite, serves the theme HTML.
+Configure the DevTools preset and plugin:
 
 ```ts
 // vite.config.ts
@@ -29,23 +29,26 @@ export default defineConfig({
   plugins: [
     shopify(),
     shopifyDevtools({
-      // Optional: force Zed instead of relying on environment variables or
-      // installed-editor detection.
+      // Optional: override editor detection.
       editor: 'zed',
     }),
   ],
 })
 ```
 
-That is all: keep running your project the way you already do (Vite alongside `shopify theme dev`). The plugin works next to [`vite-plugin-shopify`](https://github.com/barrel/shopify-vite) and `vite-plugin-shopify-theme`, needs no extra script, and does not touch your theme files.
+Run Vite alongside `shopify theme dev` as usual. The plugin works with [`vite-plugin-shopify`](https://github.com/barrel/shopify-vite) and `vite-plugin-shopify-theme`. It runs only during `vite serve`; production builds and source Liquid files are unchanged in the default mode.
 
-Open **Shopify Liquid** from the Vite DevTools dock. Use **Inspect page** in the panel header or the dedicated inspector action in the dock to pick a rendered component. Production builds are untouched because both the plugin and DevTools integration use `apply: 'serve'`, and source Liquid files are never rewritten.
+Shopify preview hosts and configured store domains are allowed automatically. Custom domains or tunnels must be added through the Vite DevTools `allowedOrigins` setting.
 
-### Authorizing the browser
+The browser client must be injected through a JavaScript entry. The plugin normally discovers one from Vite's `build.input`. If your theme has only CSS entries or discovery fails, add a small JavaScript/TypeScript entry or set `shopifyDevtools({ entry: 'frontend/theme.ts' })`.
 
-On the first connection, Vite DevTools may show **Unauthorized** while the terminal running Vite prints a one-time authorization code and link. Enter that code in the browser (or open the link) and reload the storefront if it does not reconnect immediately. The trusted token is persisted in the browser, so this is normally a one-time step for that storefront and browser. A Vite DevTools update, cleared site data, a different hostname, or an explicitly revoked trust can invalidate it; repeat the terminal-code flow when that happens.
+## Using the panel
 
-For unattended browser tests or other controlled automation, configure a static secret and give the same token to the client using the mechanism provided by your runner:
+Open **Shopify Liquid** in the Vite DevTools dock, then choose **Inspect page** to select a rendered component. The tree can be searched by component name, path, kind, or template metadata. Select an entry to inspect it; press Enter or use the details action to open its source. Paths, locations, and available Shopify IDs can also be copied.
+
+On first connection, Vite DevTools may show **Unauthorized** while Vite prints a one-time code and authorization link. Authorize the browser, then reload the storefront if it does not reconnect. Trust is stored in that browser and may need to be renewed after clearing site data, changing hostname, updating DevTools, or revoking trust.
+
+For controlled automation, configure `clientAuthTokens` and provide the same secret to the browser:
 
 ```ts
 devtools: {
@@ -54,149 +57,70 @@ devtools: {
 }
 ```
 
-Keep the token out of source control and CI logs. `clientAuth: false` also removes the prompt, but it allows any browser that can reach the Vite server to use DevTools server and filesystem capabilities. Avoid it whenever the server is exposed beyond a fully trusted local environment.
+Keep tokens out of source control and logs. Setting `clientAuth: false` disables authentication and gives any browser that can reach Vite access to DevTools server and filesystem capabilities; use it only in a fully trusted local environment.
 
-### Navigating the component tree
+## Detection modes
 
-Use the search field to filter by component name, theme-relative path, kind, JSON section key or name, and the **Template** or **Section group** badge. Matching entries keep their ancestors visible and expand their paths temporarily. Disclosure arrows collapse branches, and that state is saved for the current storefront origin.
-
-When the DevTools is used as a standalone floating panel, drag its header to move it and use the resize handle to change both dimensions. Its bounds are saved for the current storefront origin and constrained to the viewport when restored. Inside the native Vite DevTools dock, Vite continues to control the panel layout.
-
-The tree supports standard keyboard navigation: Up and Down move through visible entries, Right expands a branch or enters its first child, Left collapses it or moves to its parent, and Enter opens the focused component in your editor. Selecting an entry brings it into view in the tree without moving the storefront page. The details card can copy the relative source path, `file:line` location, and Shopify ID when one is available. Block entries also show their JSON settings read-only and can open the owning template or section-group JSON directly at the block key. Snippet entries can open either the snippet definition or the static `{% render %}` call that invoked it.
-
-## What it detects
-
-| Mode | Setup | Detects |
+| Mode | Setup | Result |
 | --- | --- | --- |
-| **Default** | none | Sections and section groups, matched to their `sections/*.liquid` file from the JSON templates and section groups of your theme. Blocks and snippets inside them are **inferred** (see below). |
-| **Full mode** | set `instrument: 'copy'` (recommended), `'in-place'`, or use `shopify-devtools dev` | Sections, theme blocks, and static snippets, including their nesting, read exactly from markers. |
+| **Default** | None | Exact sections and section groups; inferred blocks and static snippets. |
+| **Full** | `instrument: 'copy'` (recommended), `'in-place'`, or the CLI wrapper | Exact sections, theme blocks, static snippets, and nesting from markers. |
 
-### Inferred blocks and snippets
+Shopify's rendered HTML does not preserve the source identity of most blocks and snippets. Default mode therefore matches distinctive static output such as tags, classes, IDs, and `data-*` attributes. Inferred entries include a confidence rating, and ambiguous or invisible components are omitted rather than guessed. Dynamic markup or DOM rewritten by JavaScript may not match. Use full mode when the exact tree matters.
 
-Shopify leaves no trace of blocks and snippets in the HTML it renders, so in the default mode the plugin works them out. The server reads your Liquid, follows the static `{% render 'snippet' %}` calls and the blocks of each section, and records the markup each file emits first (tag, static classes, static `id` and `data-*` attributes). The panel then looks for that markup inside the section on the page and nests what it finds. Ordered sibling roots are claimed as one component, including children below any of those roots. A tag-only root is accepted only when its complete pattern is unique (or agrees with known instance/call-site cardinality). Inferred entries are labelled **inferred** and carry a confidence badge: **high** for Shopify runtime identity, distinctive static attributes, or a multi-root sequence; **medium** for multiple static classes or a unique tag-only root; and **low** for a single static class. Select an entry to see the evidence behind its rating.
+## Full mode
 
-When an expected snippet cannot be identified, an expandable report above the component tree shows its file, static render call site, and the reason: an unrecognisable root, no matching DOM element, or an ambiguous match. Repeated diagnostics are deduplicated. A snippet with no recognisable root still remains transparent to inference, so recognisable children rendered by it can appear in the caller's scope.
-
-Both dynamic block regions (`{% content_for 'blocks' %}` and loops over `section.blocks` or nested `block.blocks`) and fixed `{% content_for 'block', type: '…', id: '…' %}` calls are represented. Static block entries retain their declared ID and can open the Liquid call site from the details panel.
-
-When a block root prints `{{ block.shopify_attributes }}` (or the corresponding custom loop variable), the panel uses Shopify's runtime block ID and type directly. This identifies generic block roots that have no distinctive static class or attribute and prevents similarly shaped block types from being confused.
-
-Theme app extension sections and blocks are retained in the tree with an **App** badge instead of being discarded as unknown local component types. Their owning template JSON and Shopify ID remain available, while the panel does not offer an editor link to extension-owned Liquid source that is not part of the theme.
-
-Changes to template JSON, section groups, sections, blocks, and snippets invalidate the resolved tree automatically; the open panel refreshes without requiring a page reload.
-
-It is a best effort, tuned to prefer showing nothing over showing something wrong:
-
-- Snippets that print no element of their own, and non-unique generic root patterns, are not shown.
-- Two different components with identical markup inside the same parent are left out.
-- Markup that JavaScript rewrites after the page loads (Vue or React islands, for example) cannot be matched.
-- Dynamic parts of a class list are ignored: `class="card card--{{ size }}"` is recognised by `card`.
-
-Use the full mode when you need the exact tree. On a page served in full mode you can also measure how close the inference gets by running `await shopifyDevtools.compareInference()` in the browser console: it returns precision, recall, and the entries that were wrongly added or missed.
-
-Run `bun run benchmark:inference` for the offline Dawn, Horizon, and Skeleton home/product/collection matrix. It executes section resolution and inference against pinned, store-data-free fixtures and checks per-page precision plus aggregate recall. Fixture provenance and licenses are recorded in `benchmarks/fixtures/README.md`.
-
-### Full mode
-
-Blocks and snippets leave no trace in the HTML that Shopify renders, so the full tree needs markers in the Liquid. The recommended setup lets the Vite plugin maintain a deterministic, ignored mirror:
+The recommended option creates and maintains an ignored, instrumented theme mirror while leaving source files untouched:
 
 ```ts
 shopifyDevtools({ instrument: 'copy' })
 ```
 
-Add `.shopify-devtools/` to `.gitignore`, start Vite first, and point Shopify CLI at the generated theme:
+Add `.shopify-devtools/` to `.gitignore`, start Vite first, and point Shopify CLI at the mirror:
 
 ```sh
 SHOPIFY_FLAG_PATH=.shopify-devtools/theme shopify theme dev
 ```
 
-You can instead put `path = ".shopify-devtools/theme"` in the environment you use in `shopify.theme.toml`. An explicit `--path` or `SHOPIFY_FLAG_PATH` has higher precedence and is recommended when your Shopify CLI version does not apply `path` from an environment. The plugin copies and instruments before the Vite server starts, respects `.shopifyignore`, uses copy-on-write file clones for non-Liquid assets when supported, and then synchronizes only changed files. Source files are never modified.
+You may instead configure that path in `shopify.theme.toml`, though an explicit `--path` or `SHOPIFY_FLAG_PATH` is more reliable across Shopify CLI versions.
 
-For projects where Shopify CLI must run directly against the source directory, `shopifyDevtools({ instrument: 'in-place' })` is an explicit opt-in. It writes an atomic recovery journal before changing Liquid, instruments new edits during the session, and restores originals on shutdown. On the next start it automatically recovers files left behind by a crash. Do not delete `.shopify-devtools/in-place-journal.json` while recovery is pending; if a file was independently changed after instrumentation, startup stops instead of overwriting it.
+Use `instrument: 'in-place'` only when Shopify CLI must serve the source directory. It temporarily rewrites Liquid and uses `.shopify-devtools/in-place-journal.json` to restore originals and recover after crashes. Do not delete that journal while recovery is pending; startup stops rather than overwriting a file changed independently.
 
-The compatibility wrapper remains available. `shopify-devtools dev` writes markers into a temporary mirror, serves it through `shopify theme dev`, and starts Vite. It forwards Shopify flags and replaces a script that runs both commands with `concurrently`:
+The compatibility wrapper `shopify-devtools dev` is also available. It creates a temporary instrumented mirror, starts Shopify CLI and Vite, and forwards Shopify flags. For example: `shopify-devtools dev --environment development`.
 
-```json
-{
-  "scripts": {
-    "dev": "shopify-devtools dev --environment development",
-    "dev:plain": "concurrently \"shopify theme dev\" \"vite\""
-  }
-}
+## Editor and Vue
+
+Editor selection uses, in order: the `editor` plugin option, `SHOPIFY_DEVTOOLS_EDITOR`, `EDITOR`, then macOS detection of Zed, Cursor, or VS Code. Editors supported by [`launch-editor`](https://github.com/yyx990803/launch-editor) open at the component line. Terminal editors take over the Vite terminal until you quit them.
+
+The plugin inspects Shopify Liquid, not Vue components. `@vitejs/plugin-vue` works normally. With Vue DevTools 8, set `appendTo` to the theme's JavaScript entry because Shopify serves the HTML:
+
+```ts
+vueDevTools({ appendTo: 'frontend/entrypoints/theme.ts' })
 ```
-
-Use `--theme-path path/to/theme` when the theme is not the Vite root, `--vite-port 5174` to select a strict Vite port, and Shopify's own `--port 9293` for its preview. The wrapper checks requested/default Shopify ports before starting and reports conflicts clearly. On Windows it invokes the `.cmd` shims for both executables.
-
-The browser client must be injected through a JavaScript entry. The plugin discovers script entries from Vite's resolved `build.input`; a theme with CSS-only or no entry now stops with a clear error. Add a small entry such as `frontend/theme.ts` to your Shopify Vite plugin, or set `shopifyDevtools({ entry: 'frontend/theme.ts' })` when automatic discovery is not possible.
-
-## How it works
-
-The Vite plugin registers a native `custom-render` panel through `devtools.setup`, so the component tree and inspector live inside Vite's shared dock rather than a separate imitation toolbar. Full mode instruments Liquid with `@shopify/liquid-html-parser` in either a managed mirror or a journalled source session. Static `{% render 'snippet' %}` calls in safe HTML contexts receive comment boundaries. Dynamic or unsafe renders fall back to their enclosing component. Sections and theme-block files get root boundaries; Shopify wrapper IDs and `block.shopify_attributes` provide runtime identity.
-
-Open in editor uses the authenticated Vite DevTools RPC connection. The server resolves real paths and refuses files outside the theme root before launching the editor. See [Choosing an editor](#choosing-an-editor) for how the editor is selected. The cross-origin DevTools bootstrap is allowed automatically for the Shopify CLI preview (`127.0.0.1:9292`, `localhost:9292`), `*.myshopify.com`, and the store from `SHOPIFY_STORE_DOMAIN`, `SHOPIFY_FLAG_STORE`, or `shopify.theme.toml`. Only custom domains or tunnels need `allowedOrigins`.
-
-### Choosing an editor
-
-The editor is picked in this order:
-
-1. the `editor` plugin option, e.g. `editor: 'atom'`
-2. the `SHOPIFY_DEVTOOLS_EDITOR` environment variable, e.g. `SHOPIFY_DEVTOOLS_EDITOR=subl`
-3. the `EDITOR` environment variable, e.g. `EDITOR=code`
-4. on macOS only: auto-detection of Zed, Cursor, or Visual Studio Code (in that order)
-
-Set one of the first three if you use a different editor, have several installed, or are not on macOS (there is no auto-detection on Linux or Windows). Files open at the component's line in any editor supported by [`launch-editor`](https://github.com/yyx990803/launch-editor), including Atom, Sublime Text, VS Code, WebStorm, Vim, and Emacs.
-
-Terminal editors (`vim`, `emacs`, `nano`) run inside the terminal where Vite is running and take it over until you quit. Prefer a GUI editor or a windowed variant such as `gvim` or `mvim`.
-
-## Using it with Vue
-
-The plugin only inspects the Shopify side of your theme (sections, blocks, snippets); it never looks at Vue components. Vue tooling can sit next to it:
-
-- **`@vitejs/plugin-vue`** works as usual.
-- **Vue DevTools 8** (`vite-plugin-vue-devtools@8`) works. Shopify serves your HTML, so there is no `index.html` to inject into: point `appendTo` at your JavaScript entry. Its panel opens with Alt+Shift+D and its button sits next to the Shopify one.
-
-  ```ts
-  import vueDevTools from 'vite-plugin-vue-devtools'
-
-  export default defineConfig({
-    devtools: shopifyDevtoolsConfig,
-    plugins: [shopify(), vue(), vueDevTools({ appendTo: 'frontend/entrypoints/theme.ts' }), shopifyDevtools()],
-  })
-  ```
-
-- **Vue DevTools 9.0.0-beta.1** has been checked against the shared Vite DevTools dock: it registers its iframe entry and this plugin rewrites the root-relative panel URL to the Vite server. It is not declared supported yet because that beta exposes no explicit host-origin allowlist for the iframe-to-storefront connection, so the component tree remains empty when Shopify serves the page from another origin. Use version 8 for now.
-
-The URL rewrite is generic for iframe docks: a root-relative URL (including its query string and fragment) is moved to the Vite origin, whether the dock was registered before or after Shopify DevTools. Protocol-relative and already absolute URLs, actions, groups, and other dock types are left unchanged. This makes iframe plugins whose own transport supports the Shopify host origin usable without plugin-specific integration.
-
-To add options of your own to the `devtools` setting, spread the preset: `devtools: { ...shopifyDevtoolsConfig, clientAuth: false }`.
-
-## Scope
-
-This MVP intentionally excludes Theme Editor iframe integration, Liquid profiling, cart debugging, and variable serialization. A marker opens the component definition/root line, not the exact line of every internal HTML element.
-
-The dock button, logo, and favicon use the full-color Shopify bag (`assets/shopify/shopify-glyph.svg`) on both themes. The black and white glyph variants stay in `assets/shopify/` for monochrome treatments.
 
 ## Public API
 
-Before 1.0, the supported package surface is deliberately small: the default `shopifyDevtools` plugin, the runtime presets `shopifyDevtoolsConfig` and `shopifyDevtoolsBranding`, and the type-only `ShopifyDevtoolsOptions`. Files used by the dock renderer and action ship in the tarball for internal dynamic loading but are not export-map subpaths. Diagnostic and instrumentation helpers are implementation details and may change without notice.
+Before 1.0, the supported package surface is deliberately small:
+
+- default export: `shopifyDevtools`
+- runtime presets: `shopifyDevtoolsConfig` and `shopifyDevtoolsBranding`
+- type export: `ShopifyDevtoolsOptions`
+
+Other shipped helpers and renderer files are implementation details and may change without notice.
 
 ## Troubleshooting
 
 ### Connection metadata returns 404
 
-The browser is requesting `/__devtools/__connection.json` from Vite, but Vite DevTools is not serving it. Confirm Vite is 8.3 or newer with `vite --version`, that `devtools: shopifyDevtoolsConfig` is at the top level of `defineConfig`, and that the storefront entry is loaded from the same Vite origin shown in the error. Restart both Vite and Shopify CLI after changing the config.
+Confirm `vite --version` is 8.3 or newer, `devtools: shopifyDevtoolsConfig` is at the top level of `defineConfig`, and the storefront entry loads from the Vite origin shown in the error. Restart Vite and Shopify CLI after configuration changes.
 
 ### The component tree is empty
 
-First inspect the browser console for a failed entry script or RPC request. Confirm the rendered section wrapper has a Shopify ID such as `shopify-section-…`, the active template JSON and matching `sections/*.liquid` files exist under the resolved theme root, and the JavaScript entry is present in Vite `build.input` (or set `entry`). Default mode infers blocks and snippets only when their static output is distinctive; use full mode when exact markers are required.
+Check the browser console for a failed entry script or RPC request. Confirm the page contains Shopify section wrappers, the active template JSON and matching Liquid files are under the resolved theme root, and a JavaScript entry exists in `build.input` or is set with `entry`. Default inference needs distinctive static output; switch to full mode for exact markers.
 
 ### Vite DevTools says Unauthorized
 
-Read the one-time authorization URL/code from the terminal running Vite, authorize that browser, and reload the storefront. If it returns after a hostname change, cleared site data, or revoked trust, repeat the flow. Do not paste authorization codes or tokens into issues. For controlled automation only, configure matching `clientAuthTokens`; disabling authentication is unsafe on a reachable server.
-
-## Playground
-
-`playground/skeleton-theme` is a snapshot of Shopify's official [Skeleton theme](https://github.com/Shopify/skeleton-theme) (`main`, commit `a4f32d393b9eadf6c4403318ca39116832e5d1df`) with Vite set up like the Display starter (one CSS and one TS entrypoint) and wired to this plugin. It excludes `.git`, `.env`, `.shopify`, local `shopify.theme.toml`, and `node_modules`. See its `SNAPSHOT.md` for provenance and local setup.
+Use the one-time authorization link or code printed by Vite and reload. Repeat after hostname or trust changes. Never paste codes or tokens into issues; use matching `clientAuthTokens` only for controlled automation.
 
 <!-- Badges -->
 
