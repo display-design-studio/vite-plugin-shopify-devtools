@@ -1,9 +1,10 @@
 import { defineRpcFunction } from '@vitejs/devtools-kit'
 import launchEditorProcess from 'launch-editor'
 import { spawn } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { access, realpath } from 'node:fs/promises'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defaultAllowedOrigins, loadEnv, version as viteVersion, type Plugin, type ViteDevServer } from 'vite'
 import { INSPECT_ICON } from './inspect-icon.js'
 import { resolveSections } from './sections.js'
@@ -23,6 +24,12 @@ const ACTION_URL = `/@id/__x00__${ACTION_PUBLIC_ID}`
 // with a 20px centered logo keeps the same size and padding.
 const DOCK_CSS = '.bg-dock-glass,#devframes-anchor #devframes-dock{background-color:#fff;backdrop-filter:none}.dark .bg-dock-glass,.dark #devframes-anchor #devframes-dock{background-color:#111}#devframes-anchor.devframes-minimized #devframes-dock{--devframes-dock-minimized-size:var(--devframes-dock-height,34px);border-radius:.5rem}#devframes-anchor.devframes-minimized #devframes-dock>div:first-child{width:20px;height:20px}'
 const MINIMIZED_SIZE_SCRIPT = `const applyMinimizedSize=()=>{const host=document.querySelector('devframes-dock-embedded');if(!host?.shadowRoot)return false;if(!host.shadowRoot.querySelector('style[data-shopify-devtools]')){const style=document.createElement('style');style.dataset.shopifyDevtools='';style.textContent=${JSON.stringify(DOCK_CSS)};host.shadowRoot.append(style)}return true};if(!applyMinimizedSize()){const observer=new MutationObserver(()=>{if(applyMinimizedSize())observer.disconnect()});observer.observe(document.documentElement,{childList:true,subtree:true});setTimeout(()=>observer.disconnect(),10000)}`
+/** URL of a shipped browser module. The mtime makes the browser refetch it after a rebuild instead of reusing a cached copy. */
+const distUrl = (name: string): string => {
+  const url = new URL(`./${name}`, import.meta.url)
+  try { url.searchParams.set('build', String(Math.trunc(statSync(fileURLToPath(url)).mtimeMs))) } catch { /* Not built yet, e.g. running from source. */ }
+  return url.href
+}
 const svgDataUri = (name: string): string => {
   const source = readFileSync(new URL(`../assets/shopify/${name}`, import.meta.url))
   return `data:image/svg+xml;base64,${source.toString('base64')}`
@@ -348,8 +355,8 @@ export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): P
     },
     load(id) {
       if (id === CLIENT_ID) return `const origin=new URL(import.meta.url).origin;const connectionUrl=origin+'/__devtools/__connection.json';const connectionResponse=await fetch(connectionUrl);if(!connectionResponse.ok)throw new Error('Unable to load Vite DevTools connection metadata ('+connectionResponse.status+') from '+connectionUrl+'. Check that Vite 8.3 or newer is installed and that devtools: shopifyDevtoolsConfig is set in your Vite config.');const connectionMeta=await connectionResponse.json();globalThis.__DEVFRAME_CONNECTION__={connectionMeta,metaBaseUrl:connectionResponse.url||connectionUrl,authToken:connectionMeta.authToken};const devtoolsClient=origin+'/__devtools/embedded.js';await import(/* @vite-ignore */devtoolsClient);${MINIMIZED_SIZE_SCRIPT}`
-      if (id === RENDERER_ID) return `export { default } from ${JSON.stringify(new URL('./client.js', import.meta.url).href)};`
-      if (id === ACTION_ID) return `export { default } from ${JSON.stringify(new URL('./action.js', import.meta.url).href)};`
+      if (id === RENDERER_ID) return `export { default } from ${JSON.stringify(distUrl('client.js'))};`
+      if (id === ACTION_ID) return `export { default } from ${JSON.stringify(distUrl('action.js'))};`
     },
     transform(code, id) {
       if (!serve) return
