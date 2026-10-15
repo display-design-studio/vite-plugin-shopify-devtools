@@ -95,7 +95,7 @@ function validateCli(consumer) {
   strictEqual(result.status, 1, `CLI without arguments exited with ${result.status}`)
   strictEqual(result.signal, null, `CLI without arguments exited on signal ${result.signal}`)
   strictEqual(result.stdout, '', 'CLI usage must not be written to stdout')
-  match(result.stderr, /^Usage: shopify-devtools dev \[--theme-path path\] \[--vite-port port\] \[shopify theme dev flags\]\s*$/, 'CLI usage differs')
+  match(result.stderr, /^Usage: shopify-devtools <dev\|doctor\|init>\n  dev \[--theme-path path\] \[--vite-port port\] \[shopify theme dev flags\]\n  doctor .*\n  init .*\s*$/, 'CLI usage differs')
 }
 
 const temporary = mkdtempSync(join(tmpdir(), 'vite-plugin-shopify-devtools-pack-'))
