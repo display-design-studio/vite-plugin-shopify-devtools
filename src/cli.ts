@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url'
 import { resolveConfig } from 'vite'
 import { resolveThemeRoot } from './index.js'
 import { createThemeMirror } from './mirror.js'
+import { formatChecks, runDoctor } from './doctor.js'
+import { initProject, MANUAL_SETUP } from './init.js'
 
 export function executable(name: string, platform = process.platform): string {
   return platform === 'win32' ? `${name}.cmd` : name
@@ -53,8 +55,21 @@ function flagValue(flags: string[], long: string): string | undefined {
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
   const [command, ...rawFlags] = argv
+  if (command === 'doctor') {
+    const checks = await runDoctor()
+    console.log(formatChecks(checks))
+    if (checks.some((check) => check.status === 'fail')) process.exitCode = 1
+    return
+  }
+  if (command === 'init') {
+    const result = initProject(process.cwd())
+    if (result.config) console.log(result.configChanged ? `Updated ${path.basename(result.config)}` : `${path.basename(result.config)} already configured`)
+    if (result.gitignoreChanged) console.log('Added .shopify-devtools/ to .gitignore')
+    if (result.manual) { console.error(`${result.manual}\nAdd this to your Vite config manually:\n\n${MANUAL_SETUP}`); process.exitCode = 1 }
+    return
+  }
   if (command !== 'dev') {
-    console.error('Usage: shopify-devtools dev [--theme-path path] [--vite-port port] [shopify theme dev flags]')
+    console.error('Usage: shopify-devtools <dev|doctor|init>\n  dev [--theme-path path] [--vite-port port] [shopify theme dev flags]\n  doctor   check the setup\n  init     add the plugin to vite.config and .gitignore')
     process.exitCode = 1
     return
   }
