@@ -4,6 +4,20 @@ All notable changes to this project are documented here. This project follows [K
 
 ## [Unreleased]
 
+### Added
+
+- `shopify-devtools doctor` checks the Vite version, DevTools preset, theme root, JavaScript entry, `.gitignore` and `shopify.theme.toml`.
+- `shopify-devtools init` adds the plugin, the `devtools` preset and `.shopify-devtools/` to an existing setup.
+- Hovering a tree entry highlights its component on the page.
+- "Liquid tag" detail with a copyable `{% section %}`, `{% render %}` or `{% content_for 'block' %}` tag.
+- `Alt+Shift+L` toggles the inspector.
+- "Open in Theme Editor" action, built from `Shopify.shop` and `Shopify.theme.id`.
+
+### Changed
+
+- The tree starts collapsed and remembers what you expand. Selecting an entry scrolls the page to its component.
+- The playground now uses `@display-studio/vite-plugin-shopify-theme`.
+
 ## [0.4.0] - 2026-10-06
 
 ### Added
