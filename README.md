@@ -36,6 +36,8 @@ export default defineConfig({
 })
 ```
 
+Already have a theme with Vite? `npx shopify-devtools init` applies the configuration above, and `npx shopify-devtools doctor` checks the setup.
+
 Run Vite alongside `shopify theme dev` as usual. The plugin works with [`vite-plugin-shopify`](https://github.com/barrel/shopify-vite) and `vite-plugin-shopify-theme`. It runs only during `vite serve`; production builds and source Liquid files are unchanged in the default mode.
 
 Shopify preview hosts and configured store domains are allowed automatically. Custom domains or tunnels must be added through the Vite DevTools `allowedOrigins` setting.
@@ -44,7 +46,7 @@ The browser client must be injected through a JavaScript entry. The plugin norma
 
 ## Using the panel
 
-Open **Shopify Liquid** in the Vite DevTools dock, then choose **Inspect page** to select a rendered component. The tree can be searched by component name, path, kind, or template metadata. Select an entry to inspect it; press Enter or use the details action to open its source. Paths, locations, and available Shopify IDs can also be copied.
+Open **Shopify Liquid** in the Vite DevTools dock, then choose **Inspect page** to select a rendered component. The tree can be searched by component name, path, kind, or template metadata. Select an entry to inspect it; press Enter or use the details action to open its source. Paths, locations, and available Shopify IDs can also be copied. Hovering an entry highlights it on the page, and **Open in Theme Editor** opens the previewed theme in the Shopify admin. The details also offer a ready-to-paste Liquid tag, and `Alt+Shift+L` toggles the inspector.
 
 On first connection, Vite DevTools may show **Unauthorized** while Vite prints a one-time code and authorization link. Authorize the browser, then reload the storefront if it does not reconnect. Trust is stored in that browser and may need to be renewed after clearing site data, changing hostname, updating DevTools, or revoking trust.
 
@@ -109,6 +111,10 @@ Before 1.0, the supported package surface is deliberately small:
 Other shipped helpers and renderer files are implementation details and may change without notice.
 
 ## Troubleshooting
+
+### Not sure what is wrong
+
+Run `npx shopify-devtools doctor` in the theme directory. It reports the Vite version, DevTools preset, theme root, entry, `.gitignore` and store configuration.
 
 ### Connection metadata returns 404
 
