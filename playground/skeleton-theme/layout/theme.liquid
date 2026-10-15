@@ -21,8 +21,8 @@
     {{ 'critical.css' | asset_url | stylesheet_tag: preload: true }}
 
     {% # Vite entrypoints %}
-    {% render 'vite-tag' with 'css/main.css' %}
-    {% render 'vite-tag' with 'ts/theme.ts' %}
+    {% render 'vite-tag', entry: 'main.css' %}
+    {% render 'vite-tag', entry: 'theme.ts' %}
 
     {% # Social, title, etc. %}
     {% render 'meta-tags' %}

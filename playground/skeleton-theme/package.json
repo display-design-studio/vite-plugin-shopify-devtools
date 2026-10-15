@@ -1,19 +1,20 @@
 {
   "devDependencies": {
+    "@display-studio/vite-plugin-shopify-devtools": "file:../..",
+    "@display-studio/vite-plugin-shopify-theme": "^0.5.1",
     "esbuild": "^0.28.2",
     "typescript": "^7.0.2",
-    "vite": "^8.3.1",
-    "vite-plugin-shopify": "^5.0.0",
-    "@display-studio/vite-plugin-shopify-devtools": "file:../.."
+    "vite": "^8.3.1"
   },
   "type": "module",
   "scripts": {
-    "dev": "shopify-devtools dev --environment development --live-reload full-page",
+    "dev": "vite-shopify-theme dev -- --environment development --live-reload full-page",
     "build": "vite build",
     "shopify:dev": "shopify theme dev --environment development --live-reload full-page",
     "theme-check": "shopify theme check",
     "typecheck": "tsc --noEmit",
     "vite:dev": "vite",
-    "vite:build": "vite build"
+    "vite:build": "vite build",
+    "dev:full": "shopify-devtools dev --environment development --live-reload full-page"
   }
 }
