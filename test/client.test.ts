@@ -30,6 +30,15 @@ beforeAll(async () => {
 
 afterAll(() => nativePanel.remove())
 
+/** The tree starts collapsed; tests that look at nested entries open every level first. */
+function expandAll(shadow: ShadowRoot | null | undefined): void {
+  for (let guard = 0; guard < 10; guard++) {
+    const toggle = shadow?.querySelector<HTMLElement>('.tree-item[aria-expanded=false] .disclosure')
+    if (!toggle) return
+    toggle.click()
+  }
+}
+
 describe('browser panel', () => {
   it('debounces refresh bursts and cancels a pending refresh on disconnect', () => {
     vi.useFakeTimers()
@@ -91,11 +100,17 @@ describe('browser panel', () => {
     await vi.waitFor(() => expect(rpcCall).toHaveBeenCalledWith('shopify-devtools:open-in-editor', { file: 'sections/hero.liquid', line: 1 }))
   })
 
-  it('does not highlight or select page blocks when hovering a tree entry', () => {
-    getInspectorController().clearHighlight()
+  it('highlights the page component while hovering a tree entry, without selecting it', () => {
+    const controller = getInspectorController()
+    controller.clearHighlight()
     ;(document.querySelector('#shopify-section-hero') as HTMLElement).getBoundingClientRect = () => ({ x: 10, y: 20, left: 10, top: 20, right: 210, bottom: 120, width: 200, height: 100, toJSON: () => ({}) })
     const item = document.querySelector('shopify-liquid-devtools')?.shadowRoot?.querySelector('#tree button') as HTMLButtonElement
-    item.dispatchEvent(new MouseEvent('pointerenter'))
+    const selected = controller.selected
+    item.dispatchEvent(new MouseEvent('mouseenter'))
+    expect(document.querySelector('[data-shopify-devtools-highlight]')).toBeTruthy()
+    expect((document.querySelector('[data-shopify-devtools-highlights]') as HTMLElement).style.zIndex).toBe('998')
+    expect(controller.selected).toBe(selected)
+    item.dispatchEvent(new MouseEvent('mouseleave'))
     expect(document.querySelector('[data-shopify-devtools-highlight]')).toBeNull()
   })
 
@@ -147,7 +162,7 @@ describe('browser panel', () => {
     document.body.innerHTML = `<!--shopify-devtools:start:${marker}--><div id="shopify-section-hero"><!--shopify-devtools:start:${snippet}--><article></article><!--shopify-devtools:end:${snippet}--><!--shopify-devtools:start:${snippet}--><article></article><!--shopify-devtools:end:${snippet}--></div><!--shopify-devtools:end:${marker}-->`
     document.dispatchEvent(new Event('shopify:section:load'))
     const shadow = document.querySelector('shopify-liquid-devtools')?.shadowRoot
-    await vi.waitFor(() => expect(shadow?.querySelectorAll('.tree-item')).toHaveLength(3))
+    await vi.waitFor(() => { expandAll(shadow); expect(shadow?.querySelectorAll('.tree-item')).toHaveLength(3) })
     expect(shadow?.querySelector('#tree')?.textContent).toContain('card.liquid #2')
 
     const search = shadow?.querySelector('#search') as HTMLInputElement
@@ -254,8 +269,8 @@ describe('pages without markers', () => {
       : { ok: true, input })
     document.body.innerHTML = '<div id="shopify-section-template--1__hero" class="shopify-section">Hero</div><div id="shopify-section-unknown">Other</div>'
     const shadow = document.querySelector('shopify-liquid-devtools')?.shadowRoot
-    await vi.waitFor(() => expect(shadow?.querySelector('#tree .tree-empty')?.textContent ?? '').toContain('inferred from your theme source'))
-    expect(shadow?.querySelectorAll('#tree button')).toHaveLength(1)
+    await vi.waitFor(() => expect(shadow?.querySelector('#tree .tree-empty')?.textContent ?? '').toContain('Inferred from theme source'))
+    expect(shadow?.querySelectorAll('#tree .tree-item')).toHaveLength(1)
     expect(shadow?.querySelector('#tree')?.textContent).toContain('hero.liquid')
     expect(rpcCall).toHaveBeenCalledWith('shopify-devtools:resolve-sections', expect.objectContaining({ ids: expect.arrayContaining(['shopify-section-template--1__hero']) }))
   })
@@ -279,7 +294,7 @@ describe('pages without markers', () => {
     document.body.innerHTML = '<div id="shopify-section-template--9__settings"><p class="copy">Hello</p><i class="icon"></i></div>'
     document.dispatchEvent(new Event('shopify:section:load'))
     const shadow = document.querySelector('shopify-liquid-devtools')?.shadowRoot
-    await vi.waitFor(() => expect(shadow?.querySelectorAll('.tree-item')).toHaveLength(3))
+    await vi.waitFor(() => { expandAll(shadow); expect(shadow?.querySelectorAll('.tree-item')).toHaveLength(3) })
     ;(shadow?.querySelectorAll('.tree-item')[1] as HTMLButtonElement).click()
     expect(shadow?.querySelector('.settings')?.textContent).toContain('"heading": "Hello"')
     ;(shadow?.querySelector('.open-source') as HTMLButtonElement).click()
@@ -300,7 +315,7 @@ describe('pages without markers', () => {
     document.body.innerHTML = '<div id="shopify-section-template--10__confidence"><div class="found specific"></div></div>'
     document.dispatchEvent(new Event('shopify:section:load'))
     const shadow = document.querySelector('shopify-liquid-devtools')?.shadowRoot
-    await vi.waitFor(() => expect(shadow?.querySelector('.confidence')?.textContent).toBe('medium'))
+    await vi.waitFor(() => { expandAll(shadow); expect(shadow?.querySelector('.confidence')?.textContent).toBe('medium') })
     expect(shadow?.querySelector('.missing-report summary')?.textContent).toContain('1 expected snippet')
     expect(shadow?.querySelector('.missing-report')?.textContent).toContain('sections/confidence.liquid:8')
     ;(shadow?.querySelectorAll('.tree-item')[1] as HTMLButtonElement).click()
@@ -341,7 +356,7 @@ describe('pages without markers', () => {
     document.body.innerHTML = `<div id="shopify-section-template--44__apps"><div data-shopify-editor-block='{"id":"review-a","type":"${appType}"}'></div></div>`
     document.dispatchEvent(new Event('shopify:section:load'))
     const shadow = document.querySelector('shopify-liquid-devtools')?.shadowRoot
-    await vi.waitFor(() => expect(shadow?.querySelectorAll('.tree-item')).toHaveLength(2))
+    await vi.waitFor(() => { expandAll(shadow); expect(shadow?.querySelectorAll('.tree-item')).toHaveLength(2) })
     ;(shadow?.querySelectorAll('.tree-item')[1] as HTMLButtonElement).click()
     expect(shadow?.querySelector('#details')?.textContent).toContain('App')
     expect(shadow?.querySelector('#details .open-editor')).toBeNull()
@@ -357,3 +372,69 @@ describe('pages without markers', () => {
     expect(shadow?.querySelectorAll('#tree button')).toHaveLength(0)
   })
 })
+
+describe('themeEditorUrl', () => {
+  const location = { pathname: '/products/shirt', search: '?variant=1' }
+  it('links to the previewed theme and section', () => {
+    expect(client.themeEditorUrl({ shop: 'acme.myshopify.com', theme: { id: 123 } }, { kind: 'section', shopifyId: 'shopify-section-hero' }, location))
+      .toBe('https://acme.myshopify.com/admin/themes/123/editor?previewPath=%2Fproducts%2Fshirt%3Fvariant%3D1&section=hero')
+  })
+  it('omits the section for other kinds', () => {
+    expect(client.themeEditorUrl({ shop: 'acme.myshopify.com', theme: { id: '9' } }, { kind: 'snippet' }, location)).not.toContain('section=')
+  })
+  it('refuses missing or unsafe values', () => {
+    expect(client.themeEditorUrl(undefined, { kind: 'section' }, location)).toBeUndefined()
+    expect(client.themeEditorUrl({ shop: 'evil.com/x', theme: { id: 1 } }, { kind: 'section' }, location)).toBeUndefined()
+    expect(client.themeEditorUrl({ shop: 'acme.myshopify.com', theme: { id: 'x' } }, { kind: 'section' }, location)).toBeUndefined()
+  })
+})
+
+describe('overlay mutations', () => {
+  it('ignores the highlight overlay but not page changes', () => {
+    const overlay = document.createElement('div'); overlay.setAttribute('data-shopify-devtools-highlights', '')
+    const box = document.createElement('div'); overlay.append(box)
+    expect(client.isOverlayMutation({ target: box, addedNodes: [] as never, removedNodes: [] as never })).toBe(true)
+    expect(client.isOverlayMutation({ target: document.documentElement, addedNodes: [overlay] as never, removedNodes: [] as never })).toBe(true)
+    expect(client.isOverlayMutation({ target: document.body, addedNodes: [document.createElement('p')] as never, removedNodes: [] as never })).toBe(false)
+  })
+})
+
+describe('liquidTag', () => {
+  it('builds the tag for each component location', () => {
+    expect(client.liquidTag({ file: 'sections/hero.liquid' })).toBe("{% section 'hero' %}")
+    expect(client.liquidTag({ file: 'snippets/card.liquid' })).toBe("{% render 'card' %}")
+    expect(client.liquidTag({ file: 'blocks/text.liquid' })).toBe("{% content_for 'block', type: 'text', id: 'text' %}")
+  })
+  it('has none for apps or unknown files', () => {
+    expect(client.liquidTag({ file: 'snippets/card.liquid', app: true })).toBeUndefined()
+    expect(client.liquidTag({ file: 'layout/theme.liquid' })).toBeUndefined()
+  })
+})
+
+describe('shortcut', () => {
+  it('toggles the inspector with Alt+Shift+L only', async () => {
+    const { isInspectShortcut } = await import('../src/inspector.js')
+    const controller = getInspectorController()
+    const toggle = vi.spyOn(controller, 'toggle')
+    document.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyL', altKey: true, shiftKey: true }))
+    expect(toggle).toHaveBeenCalledTimes(1)
+    document.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyL', altKey: true }))
+    expect(toggle).toHaveBeenCalledTimes(1)
+    expect(isInspectShortcut({ code: 'KeyL', altKey: true, shiftKey: true, ctrlKey: true, metaKey: false })).toBe(false)
+    toggle.mockRestore(); controller.deactivate()
+  })
+})
+
+describe('tree behaviour', () => {
+  it('starts collapsed and scrolls the page to a clicked component', () => {
+    document.body.innerHTML = `<!--shopify-devtools:start:${marker}--><section id="shopify-section-hero"></section><!--shopify-devtools:end:${marker}-->`
+    getInspectorController().refresh()
+    const target = document.querySelector('#shopify-section-hero') as HTMLElement
+    const scroll = vi.fn(); target.scrollIntoView = scroll
+    const shadow = document.querySelector('shopify-liquid-devtools')!.shadowRoot!
+    const item = shadow.querySelector('.tree-item') as HTMLButtonElement
+    item.click()
+    expect(scroll).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' })
+  })
+})
+
