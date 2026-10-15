@@ -4,6 +4,14 @@ import type { BlockInstance, Expectation } from './graph.js'
 import { compareTrees, inferNodes, type InferenceConfidence, type InferenceReport, type MissingSnippet } from './infer.js'
 import type { ResolvedSection } from './sections.js'
 
+/** Kept deliberately low so the highlight always renders beneath the DevTools UI. */
+const OVERLAY_Z_INDEX = '998'
+
+/** Alt+Shift+L toggles the inspector. `code` keeps it working when Option changes the typed character on macOS. */
+export const INSPECT_SHORTCUT = 'Alt+Shift+L'
+export const isInspectShortcut = (event: Pick<KeyboardEvent, 'code' | 'altKey' | 'shiftKey' | 'ctrlKey' | 'metaKey'>): boolean =>
+  event.code === 'KeyL' && event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey
+
 export interface ComponentNode extends ComponentSource {
   start: Comment | null
   end: Comment | null
@@ -197,7 +205,12 @@ export class InspectorController {
 
   constructor() {
     this.#overlay.dataset.shopifyDevtoolsHighlights = ''
-    this.#overlay.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483646'
+    this.#overlay.style.cssText = `position:fixed;inset:0;pointer-events:none;z-index:${OVERLAY_Z_INDEX}`
+    document.addEventListener('keydown', (event) => {
+      if (!isInspectShortcut(event)) return
+      event.preventDefault()
+      this.toggle()
+    })
   }
 
   setRpc(rpc: unknown): void { this.rpc = rpc as RpcCaller }
@@ -351,7 +364,7 @@ export class InspectorController {
   select(node: ComponentNode): void { this.selected = node; this.#emit() }
   clearHighlight(): void { this.#highlighted = undefined; this.#overlay.replaceChildren() }
 
-  highlight(node: ComponentNode): void {
+    highlight(node: ComponentNode): void {
     if (!this.#overlay.isConnected) document.documentElement.append(this.#overlay)
     this.#highlighted = node
     this.#overlay.replaceChildren()

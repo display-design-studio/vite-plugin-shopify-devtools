@@ -1,5 +1,5 @@
 import type { DockClientScriptContext } from '@vitejs/devtools-kit/client'
-import { INSPECT_ENTRY_ID, componentTree, deactivateInspectorOnDevtoolsNavigation, deepestAtPoint, deepestForTarget, getInspectorController, type ComponentNode } from './inspector.js'
+import { INSPECT_ENTRY_ID, INSPECT_SHORTCUT, componentTree, deactivateInspectorOnDevtoolsNavigation, deepestAtPoint, deepestForTarget, getInspectorController, type ComponentNode } from './inspector.js'
 import { INSPECT_ICON_SVG } from './inspect-icon.js'
 import { SHOPIFY_GLYPH_URI } from './shopify-glyph.js'
 
@@ -8,7 +8,7 @@ const liquidIcon = `<img class="glyph" src="${SHOPIFY_GLYPH_URI}" alt="" aria-hi
 const inspectIcon = INSPECT_ICON_SVG.replace('<svg ', '<svg class="inspect-icon" aria-hidden="true" ')
 const closeIcon = icon('<path d="m7 7 10 10M17 7 7 17"/>')
 const disclosureIcon = icon('<path d="m9 6 6 6-6 6"/>')
-const COLLAPSED_KEY = 'shopify-devtools:collapsed-nodes'
+const EXPANDED_KEY = 'shopify-devtools:expanded-nodes'
 const PANEL_LAYOUT_KEY = 'shopify-devtools:panel-layout'
 type PanelLayout = { x: number; y: number; width: number; height: number }
 
@@ -20,14 +20,15 @@ export class ShopifyDevtools extends HTMLElement {
   #unsubscribe?: () => void
   #shownError?: Error
   #query = ''
-  #collapsed = this.readCollapsed()
+  #expanded = this.readExpanded()
   #treeSignature = ''
   #resizeObserver?: ResizeObserver
   #layoutTimer?: ReturnType<typeof setTimeout>
   #refreshTimer?: ReturnType<typeof setTimeout>
   #drag?: { pointerId: number; offsetX: number; offsetY: number }
   onInspectPage?: () => void
-  #observer = new MutationObserver(() => this.scheduleRefresh())
+  #observer = new MutationObserver((records) => { if (!records.every(isOverlayMutation)) this.scheduleRefresh() })
+  #scrolledTo?: string
   #themeObserver = new MutationObserver(() => this.syncTheme())
   #colorScheme = window.matchMedia?.('(prefers-color-scheme: dark)')
 
@@ -36,14 +37,14 @@ export class ShopifyDevtools extends HTMLElement {
     Object.assign(globalThis, { shopifyDevtools: { compareInference: () => this.#controller.compareInference() } })
     this.#shadow.innerHTML = `<style>${styles}</style>
       <section id="panel" aria-label="Shopify Liquid DevTools">
-        <header><div class="title">${liquidIcon}<strong>Liquid DevTools</strong><span class="badge">DEV</span></div><div class="header-actions"><button id="panel-inspect" class="panel-inspect" aria-label="Inspect Liquid component" aria-pressed="false">${inspectIcon}<span>Inspect page</span></button><button id="close" class="icon" aria-label="Close DevTools">${closeIcon}</button></div></header>
+        <header><div class="title">${liquidIcon}<strong>Liquid DevTools</strong><span class="badge">DEV</span></div><div class="header-actions"><button id="panel-inspect" class="panel-inspect" aria-label="Inspect Liquid component" title="Inspect (${INSPECT_SHORTCUT})" aria-pressed="false">${inspectIcon}<span>Inspect page</span></button><button id="close" class="icon" aria-label="Close DevTools">${closeIcon}</button></div></header>
         <div class="workspace"><nav><div class="nav-title">Components</div><label class="search"><span class="sr-only">Search components</span><input id="search" type="search" placeholder="Search components…" autocomplete="off"></label><div id="missing-report"></div><ol id="tree" role="tree" aria-label="Liquid components"></ol></nav><main id="details"><div class="empty"><strong>No component selected</strong><span>Select a component from the tree or activate the inspector.</span></div></main></div>
       </section>
       <div id="toast" role="status" aria-live="polite"></div>
       <div id="toolbar" role="toolbar" aria-label="Shopify Liquid DevTools">
         <button id="toggle" class="brand" aria-label="Toggle Liquid DevTools" aria-pressed="false">${liquidIcon}<span>Liquid</span></button>
         <span class="divider"></span>
-        <button id="inspect" class="icon" aria-label="Inspect Liquid component" aria-pressed="false">${inspectIcon}</button>
+        <button id="inspect" class="icon" aria-label="Inspect Liquid component" title="Inspect (${INSPECT_SHORTCUT})" aria-pressed="false">${inspectIcon}</button>
       </div>`
     this.#themeSource = themeSource(this)
     if (this.#themeSource) this.#themeObserver.observe(this.#themeSource, { attributes: true, attributeFilter: ['class'] })
@@ -210,15 +211,15 @@ export class ShopifyDevtools extends HTMLElement {
     }
   }
 
-  readCollapsed(): Set<string> {
+  readExpanded(): Set<string> {
     try {
-      const value = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '[]')
+      const value = JSON.parse(localStorage.getItem(EXPANDED_KEY) ?? '[]')
       return new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [])
     } catch { return new Set() }
   }
 
-  saveCollapsed(): void {
-    try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...this.#collapsed])) } catch { /* Storage can be unavailable. */ }
+  saveExpanded(): void {
+    try { localStorage.setItem(EXPANDED_KEY, JSON.stringify([...this.#expanded])) } catch { /* Storage can be unavailable. */ }
   }
 
   nodeKey(node: ComponentNode): string { return `${node.id}:${node.occurrence}` }
@@ -241,7 +242,7 @@ export class ShopifyDevtools extends HTMLElement {
     const nodes = this.#tree.filter((node) => this.nodeMatches(node))
     const items = nodes.map((node) => this.renderNode(node))
     if (!items.length) items.push(this.renderNote(this.#query ? `No components match “${this.#query}”.` : 'No Liquid sections found on this page.'))
-    else if (this.#controller.mode === 'inferred' && !this.#query) items.unshift(this.renderNote('Blocks and snippets are inferred from your theme source and can be incomplete. Use the full mode for exact results: see "Full mode" in the README.'))
+    else if (this.#controller.mode === 'inferred' && !this.#query) items.unshift(this.renderNote('Inferred from theme source. Enable full mode for exact results.'))
     list.replaceChildren(...items)
     this.renderMissingReport()
     this.syncTabStops()
@@ -306,7 +307,7 @@ export class ShopifyDevtools extends HTMLElement {
     button.dataset.key = this.nodeKey(node)
     button.setAttribute('role', 'treeitem')
     const children = node.children.filter((child) => this.nodeMatches(child))
-    const expanded = this.#query ? true : !this.#collapsed.has(this.nodeKey(node))
+    const expanded = this.#query ? true : this.#expanded.has(this.nodeKey(node))
     if (node.children.length) button.setAttribute('aria-expanded', String(expanded))
     const disclosure = document.createElement('span'); disclosure.className = `disclosure${node.children.length ? '' : ' placeholder'}`; disclosure.innerHTML = disclosureIcon
     const text = document.createElement('span')
@@ -320,10 +321,12 @@ export class ShopifyDevtools extends HTMLElement {
     button.append(disclosure, initial, text)
     button.addEventListener('click', (event) => {
       if ((event.target as Element).closest('.disclosure') && node.children.length) this.toggleNode(node)
-      else this.select(node)
+      else { this.select(node); this.reveal(node) }
     })
     button.addEventListener('focus', () => { this.syncTabStops(button); if (this.#controller.selected !== node) this.select(node) })
     button.addEventListener('keydown', (event) => this.onTreeKey(event, node))
+    button.addEventListener('mouseenter', () => this.#controller.highlight(node))
+    button.addEventListener('mouseleave', () => this.#controller.clearHighlight())
     item.append(button)
     if (children.length && expanded) {
       const nested = document.createElement('ol')
@@ -334,9 +337,9 @@ export class ShopifyDevtools extends HTMLElement {
     return item
   }
 
-  toggleNode(node: ComponentNode, expand = this.#collapsed.has(this.nodeKey(node))): void {
-    if (expand) this.#collapsed.delete(this.nodeKey(node)); else this.#collapsed.add(this.nodeKey(node))
-    this.saveCollapsed(); this.renderTree(); this.focusNode(node)
+  toggleNode(node: ComponentNode, expand = !this.#expanded.has(this.nodeKey(node))): void {
+    if (expand) this.#expanded.add(this.nodeKey(node)); else this.#expanded.delete(this.nodeKey(node))
+    this.saveExpanded(); this.renderTree(); this.focusNode(node)
   }
 
   focusNode(node: ComponentNode): void {
@@ -352,10 +355,10 @@ export class ShopifyDevtools extends HTMLElement {
     if (event.key === 'ArrowDown') target = visible[index + 1] && this.nodeFor(visible[index + 1])
     else if (event.key === 'ArrowUp') target = visible[index - 1] && this.nodeFor(visible[index - 1])
     else if (event.key === 'ArrowRight' && node.children.length) {
-      if (this.#collapsed.has(this.nodeKey(node)) && !this.#query) this.toggleNode(node, true)
+      if (!this.#expanded.has(this.nodeKey(node)) && !this.#query) this.toggleNode(node, true)
       else target = node.children.find((child) => this.nodeMatches(child))
     } else if (event.key === 'ArrowLeft') {
-      if (node.children.length && !this.#collapsed.has(this.nodeKey(node)) && !this.#query) this.toggleNode(node, false)
+      if (node.children.length && this.#expanded.has(this.nodeKey(node)) && !this.#query) this.toggleNode(node, false)
       else target = node.parent ?? undefined
     } else if (event.key === 'Enter') {
       if (node.app && node.instanceSourceFile) void this.#controller.openSource(node.instanceSourceFile, node.instanceSourceLine ?? 1)
@@ -363,7 +366,7 @@ export class ShopifyDevtools extends HTMLElement {
     }
     else return
     event.preventDefault()
-    if (target) this.focusNode(target)
+    if (target) { this.focusNode(target); if (event.key === 'ArrowDown' || event.key === 'ArrowUp') this.reveal(target) }
   }
 
   nodeFor(entry: HTMLElement): ComponentNode | undefined {
@@ -371,13 +374,19 @@ export class ShopifyDevtools extends HTMLElement {
     return nodes.find((node) => this.nodeKey(node) === entry.dataset.key)
   }
 
+  /** Scrolls the page to the component, since the tree can select something far from the viewport. */
+  reveal(node: ComponentNode): void {
+    const element = node.roots[0]
+    if (element && 'scrollIntoView' in element) element.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }
+
   select(node: ComponentNode): void {
     this.#controller.select(node)
   }
 
   showSelection(node: ComponentNode): void {
-    for (let parent = node.parent; parent; parent = parent.parent) this.#collapsed.delete(this.nodeKey(parent))
-    this.saveCollapsed()
+    for (let parent = node.parent; parent; parent = parent.parent) this.#expanded.add(this.nodeKey(parent))
+    this.saveExpanded()
     if (![...this.#shadow.querySelectorAll<HTMLElement>('.tree-item')].some((item) => item.dataset.key === this.nodeKey(node))) this.renderTree()
     this.#shadow.querySelectorAll('.tree-item').forEach((item) => {
       item.classList.remove('selected'); item.setAttribute('aria-selected', 'false')
@@ -386,7 +395,9 @@ export class ShopifyDevtools extends HTMLElement {
     const selected = [...this.#shadow.querySelectorAll<HTMLElement>('.tree-item')].find((item) => item.dataset.key === key)
     selected?.classList.add('selected')
     selected?.setAttribute('aria-selected', 'true')
-    if (selected && 'scrollIntoView' in selected) selected.scrollIntoView({ block: 'nearest' })
+    // Re-selecting happens on every refresh; only scroll when the selection actually changes.
+    if (selected && this.#scrolledTo !== key && 'scrollIntoView' in selected) selected.scrollIntoView({ block: 'nearest' })
+    this.#scrolledTo = key
     const element = node.roots[0]
     const details = this.#shadow.querySelector('#details')
     if (!details) return
@@ -401,6 +412,8 @@ export class ShopifyDevtools extends HTMLElement {
     const fields = document.createElement('dl')
     const dom = element ? `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ''}${[...element.classList].map((value) => `.${value}`).join('')}` : 'No DOM root'
     const detailFields: Array<[string, string, string?]> = [['File', node.file, node.file], ['Line', String(node.line)], ['Location', `${node.file}:${node.line}`, `${node.file}:${node.line}`], ['DOM', dom], ['Shopify ID', node.shopifyId ?? '—', node.shopifyId]]
+    const tag = liquidTag(node)
+    if (tag) detailFields.splice(3, 0, ['Liquid tag', tag, tag])
     if (node.inferenceConfidence) detailFields.push(['Confidence', node.inferenceConfidence], ['Evidence', node.inferenceReason ?? '—'])
     for (const [label, value, copy] of detailFields) {
       const dt = document.createElement('dt'); dt.textContent = label
@@ -424,6 +437,12 @@ export class ShopifyDevtools extends HTMLElement {
       const openCallSite = document.createElement('button'); openCallSite.className = 'open-source'; openCallSite.textContent = callLabel
       openCallSite.addEventListener('click', () => void this.openRelatedSource(node.callSiteFile!, node.callSiteLine ?? 1, callLabel, openCallSite))
       actions.append(openCallSite)
+    }
+    const editorUrl = themeEditorUrl(globalThis.Shopify, node, location)
+    if (editorUrl) {
+      const link = document.createElement('a'); link.className = 'open-source'; link.textContent = 'Open in Theme Editor'
+      link.href = editorUrl; link.target = '_blank'; link.rel = 'noopener noreferrer'
+      actions.append(link)
     }
     card.append(heading)
     if (actions.childElementCount) card.append(actions)
@@ -474,6 +493,44 @@ export class ShopifyDevtools extends HTMLElement {
   }
 }
 
+const OVERLAY = '[data-shopify-devtools-highlights]'
+const inOverlay = (node: Node): boolean => node instanceof Element && (node.matches(OVERLAY) || node.closest(OVERLAY) !== null)
+
+/** The hover/inspect overlay lives in the page; redrawing it must not trigger a tree refresh. */
+export function isOverlayMutation(record: Pick<MutationRecord, 'target' | 'addedNodes' | 'removedNodes'>): boolean {
+  if (inOverlay(record.target)) return true
+  const changed = [...record.addedNodes, ...record.removedNodes]
+  return changed.length > 0 && changed.every(inOverlay)
+}
+
+/** The tag that renders this component, ready to paste. Inline blocks and app components have none. */
+export function liquidTag(node: Pick<ComponentNode, 'file' | 'app'>): string | undefined {
+  if (node.app) return
+  const match = /^(sections|snippets|blocks)\/([^/]+)\.liquid$/.exec(node.file)
+  if (!match) return
+  const [, directory, name] = match
+  if (directory === 'sections') return `{% section '${name}' %}`
+  if (directory === 'snippets') return `{% render '${name}' %}`
+  return `{% content_for 'block', type: '${name}', id: '${name}' %}`
+}
+
+interface ShopifyGlobal { shop?: unknown, theme?: { id?: unknown } }
+declare global { var Shopify: ShopifyGlobal | undefined }
+
+/**
+ * Link to the Theme Editor for the theme being previewed. `Shopify.shop` and `Shopify.theme.id` come from the
+ * storefront's `content_for_header`. `previewPath` and `section` are what the editor itself puts in its URL; they are
+ * not documented, so the link degrades to opening the editor when the section is not recognised.
+ */
+export function themeEditorUrl(shopify: ShopifyGlobal | undefined, node: Pick<ComponentNode, 'kind' | 'shopifyId'>, loc: Pick<Location, 'pathname' | 'search'>): string | undefined {
+  const shop = typeof shopify?.shop === 'string' ? shopify.shop : undefined
+  const theme = shopify?.theme?.id
+  if (!shop || !/^[a-z0-9-]+(\.[a-z0-9-]+)*$/i.test(shop) || (typeof theme !== 'number' && typeof theme !== 'string') || !/^\d+$/.test(String(theme))) return
+  const params = new URLSearchParams({ previewPath: `${loc.pathname}${loc.search}` })
+  if (node.kind === 'section' && node.shopifyId?.startsWith('shopify-section-')) params.set('section', node.shopifyId.slice('shopify-section-'.length))
+  return `https://${shop}/admin/themes/${theme}/editor?${params}`
+}
+
 const COLOR_SCHEME_KEY = 'devframes-color-scheme'
 
 /** Nearest ancestor (crossing shadow roots) that Vite DevTools marks with `.dark` or `.light`. */
@@ -519,13 +576,13 @@ nav{overflow:auto;background:var(--panel);border-right:1px solid var(--border);p
 ol{list-style:none;padding:0;margin:0}ol ol{padding-left:14px}
 .tree-item{width:100%;display:flex;gap:7px;align-items:center;color:var(--text);background:transparent;border:0;border-radius:8px;padding:6px 7px 6px 2px;text-align:left;cursor:pointer;transition:background .15s var(--ease)}.tree-item:hover{background:var(--raised)}.tree-item.selected{background:var(--selected);box-shadow:inset 2px 0 0 var(--accent)}
 .tree-item>span:not(.kind):not(.disclosure){min-width:0;display:flex;flex-direction:column}.tree-item b{font-size:13px;font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tree-item small,.detail-heading small{font-size:12px;line-height:16px;color:var(--muted);text-transform:capitalize}.disclosure{width:16px;height:20px;display:grid;place-items:center;flex:none}.disclosure svg{width:13px;height:13px;transition:transform .12s}.tree-item[aria-expanded=true] .disclosure svg{transform:rotate(90deg)}.disclosure.placeholder{visibility:hidden}.origin,.confidence{align-self:flex-start;margin-top:2px;padding:0 5px;border:1px solid var(--border);border-radius:10px;color:var(--muted);font-size:10px;line-height:15px;font-style:normal}.confidence{text-transform:uppercase;letter-spacing:.03em}.confidence.high{color:var(--section-text)}.confidence.medium{color:var(--snippet-text)}
-.missing-report{margin:0 3px 8px;border:1px solid var(--border);border-radius:7px;background:var(--raised);font-size:11px}.missing-report summary{cursor:pointer;padding:6px 8px;color:var(--muted);font-weight:600}.missing-report ul{list-style:none;margin:0;padding:0 8px 7px}.missing-report li{display:flex;flex-direction:column;padding:5px 0;border-top:1px solid var(--border)}.missing-report strong{font-weight:600;overflow-wrap:anywhere}.missing-report small,.missing-report span{color:var(--muted);overflow-wrap:anywhere}
+\n.missing-report{margin:0 3px 8px;border:1px solid var(--border);border-radius:7px;background:var(--raised);font-size:11px}.missing-report summary{cursor:pointer;padding:6px 8px;color:var(--muted);font-weight:600}.missing-report ul{list-style:none;margin:0;padding:0 8px 7px}.missing-report li{display:flex;flex-direction:column;padding:5px 0;border-top:1px solid var(--border)}.missing-report strong{font-weight:600;overflow-wrap:anywhere}.missing-report small,.missing-report span{color:var(--muted);overflow-wrap:anywhere}
 .kind{width:22px;height:22px;flex:none;display:grid;place-items:center;border-radius:4px;font-size:12px;font-weight:650;background:var(--raised);color:var(--muted)}.kind.section{background:var(--section-bg);color:var(--section-text)}.kind.block{background:var(--block-bg);color:var(--block-text)}.kind.snippet{background:var(--snippet-bg);color:var(--snippet-text)}
 main{min-width:0;overflow:auto;padding:16px}.tree-empty{list-style:none;padding:8px 7px;color:var(--muted);font-size:12px;line-height:1.45}.empty{height:100%;display:grid;place-content:center;gap:4px;text-align:center;color:var(--muted)}.empty strong{color:var(--text);font-weight:550}
 .card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px}
 .detail-heading{display:flex;align-items:center;gap:10px;padding-bottom:12px;border-bottom:1px solid var(--border)}.detail-heading>div{display:flex;flex-direction:column}.detail-heading strong{font-weight:650}
 dl{display:grid;grid-template-columns:90px minmax(0,1fr);gap:8px 14px;margin:14px 0}dt{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere;font-family:ui-monospace,SFMono-Regular,'SF Mono',Consolas,'Liberation Mono',Menlo,monospace;font-size:13px}.copy{float:right;margin-left:8px;border:1px solid var(--border);border-radius:5px;padding:1px 6px;background:transparent;color:var(--muted);cursor:pointer;font:inherit;font-size:11px}.copy:hover{background:var(--raised);color:var(--text)}
-.detail-actions{display:flex;gap:8px;margin-top:14px}.open-editor,.open-source{border:0;background:var(--primary-bg);color:var(--primary-text);border-radius:8px;padding:6px 12px;font-weight:550;cursor:pointer;transition:background .15s var(--ease)}.open-editor:hover{background:var(--primary-hover)}.open-source{border:1px solid var(--border);background:transparent;color:var(--text)}.open-source:hover{background:var(--raised)}.open-editor:disabled,.open-source:disabled{opacity:.6;cursor:wait}.card h3{margin:16px 0 6px;font-size:12px;font-weight:650}.settings{max-height:180px;overflow:auto;margin:0;padding:10px;border:1px solid var(--border);border-radius:7px;background:var(--raised);color:var(--text);font:12px/18px ui-monospace,SFMono-Regular,'SF Mono',Consolas,'Liberation Mono',Menlo,monospace;white-space:pre-wrap}
+.detail-actions{display:flex;gap:8px;margin-top:14px}.open-editor,.open-source{text-decoration:none;display:inline-block;border:0;background:var(--primary-bg);color:var(--primary-text);border-radius:8px;padding:6px 12px;font-weight:550;cursor:pointer;transition:background .15s var(--ease)}.open-editor:hover{background:var(--primary-hover)}.open-source{border:1px solid var(--border);background:transparent;color:var(--text)}.open-source:hover{background:var(--raised)}.open-editor:disabled,.open-source:disabled{opacity:.6;cursor:wait}.card h3{margin:16px 0 6px;font-size:12px;font-weight:650}.settings{max-height:180px;overflow:auto;margin:0;padding:10px;border:1px solid var(--border);border-radius:7px;background:var(--raised);color:var(--text);font:12px/18px ui-monospace,SFMono-Regular,'SF Mono',Consolas,'Liberation Mono',Menlo,monospace;white-space:pre-wrap}
 #highlights{position:fixed;inset:0;pointer-events:none}.highlight{position:fixed;box-sizing:border-box;border:2px solid var(--accent);background:var(--accent-soft);border-radius:2px;box-shadow:0 0 0 1px #fff3 inset}
 #toast{position:fixed;left:50%;bottom:72px;max-width:min(460px,calc(100vw - 30px));transform:translate(-50%,8px);opacity:0;visibility:hidden;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);box-shadow:var(--shadow-float);transition:all .15s var(--ease)}#toast.show{opacity:1;visibility:visible;transform:translate(-50%,0)}
 #toast[data-type=success]{background:var(--ok-bg);border-color:var(--ok-border);color:var(--ok-text)}#toast[data-type=error]{background:var(--err-bg);border-color:var(--err-border);color:var(--err-text)}
