@@ -23,6 +23,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
+      # npm 10.8 (bundled with Node 20) crashes in Arborist's peer-set resolution when installing vite 8.
+      - if: matrix.node == '20.19.0'
+        run: npm install -g npm@11
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
