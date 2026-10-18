@@ -12,6 +12,7 @@ All notable changes to this project are documented here. This project follows [K
 - "Liquid tag" detail with a copyable `{% section %}`, `{% render %}` or `{% content_for 'block' %}` tag.
 - `Alt+Shift+L` toggles the inspector.
 - "Open in Theme Editor" action, built from `Shopify.shop` and `Shopify.theme.id`.
+- Collapsed "Settings" list for sections and blocks: the settings declared in `{% schema %}`, with the value stored in the template JSON or the default.
 
 ### Changed
 

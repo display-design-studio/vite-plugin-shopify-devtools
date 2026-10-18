@@ -8,6 +8,8 @@ export interface ResolvedSection {
   kind: 'section'
   /** The snippets and blocks this section may contain, read from its Liquid and template JSON. */
   tree?: Expectation[]
+  /** Setting values stored for this section in its template or section group. */
+  settings?: Record<string, unknown>
   instanceKey?: string
   instanceName?: string
   owner?: string
@@ -49,8 +51,10 @@ export function parseJsonc(text: string): unknown {
   return JSON.parse(out)
 }
 
-type Candidate = { owner: string; ownerFilename: string; key?: string; name?: string; type: string; blocks: JsonBlock[]; sourceLine?: number }
+type Candidate = { owner: string; ownerFilename: string; key?: string; name?: string; type: string; blocks: JsonBlock[]; sourceLine?: number; settings?: Record<string, unknown> }
 type RawBlock = { type?: unknown; name?: unknown; settings?: unknown; disabled?: unknown; blocks?: Record<string, RawBlock>; block_order?: unknown }
+
+const plainObject = (value: unknown): Record<string, unknown> | undefined => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined
 
 const lineOfKey = (text: string, key: string): number => {
   const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -65,19 +69,19 @@ function normalizeBlocks(raw: RawBlock | undefined, text: string, sourceFile: st
   return order.flatMap((id) => {
     const block = blocks[id]
     if (!block || block.disabled === true || typeof block.type !== 'string' || !validType(block.type)) return []
-    const settings = block.settings && typeof block.settings === 'object' && !Array.isArray(block.settings) ? block.settings as Record<string, unknown> : undefined
+    const settings = plainObject(block.settings)
     return [{ id, type: block.type, settings, sourceFile, sourceLine: lineOfKey(text, id), blocks: normalizeBlocks(block, text, sourceFile) }]
   })
 }
 
-async function readSectionTypes(file: string): Promise<Array<[string, { type: string; blocks: JsonBlock[] }]>> {
+async function readSectionTypes(file: string): Promise<Array<[string, { type: string; blocks: JsonBlock[]; settings?: Record<string, unknown> }]>> {
   try {
     const text = await readFile(file, 'utf8')
     const data = parseJsonc(text) as { sections?: Record<string, RawBlock> }
     const sourceFile = path.relative(path.dirname(path.dirname(file)), file).split(path.sep).join('/')
     return Object.entries(data?.sections ?? {})
       .filter((entry): entry is [string, RawBlock & { type: string }] => typeof entry[1]?.type === 'string' && validType(entry[1].type))
-      .map(([key, value]) => [key, { type: value.type, name: typeof value.name === 'string' ? value.name : undefined, sourceLine: lineOfKey(text, key), blocks: normalizeBlocks(value, text, sourceFile) }])
+      .map(([key, value]) => [key, { type: value.type, name: typeof value.name === 'string' ? value.name : undefined, sourceLine: lineOfKey(text, key), settings: plainObject(value.settings), blocks: normalizeBlocks(value, text, sourceFile) }])
   } catch { return [] }
 }
 
@@ -147,7 +151,7 @@ export async function resolveSections(root: string, ids: unknown, pageType?: unk
     }
     const file = `sections/${found.type}.liquid`
     if (await exists(file)) result[id] = {
-      file, line: 1, kind: 'section', tree: await sectionExpectations(root, file, found.blocks),
+      file, line: 1, kind: 'section', tree: await sectionExpectations(root, file, found.blocks), settings: found.settings,
       instanceKey: found.key, instanceName: found.name, owner: found.owner, ownerFilename: found.ownerFilename, origin,
     }
   }

@@ -12,7 +12,7 @@ async function theme(): Promise<string> {
   await mkdir(path.join(root, 'sections'))
   for (const name of ['hero', 'main-product', 'main-collection', 'header', 'feed-artists']) await writeFile(path.join(root, 'sections', `${name}.liquid`), '<div></div>')
   await writeFile(path.join(root, 'templates', 'index.json'), HEADER + JSON.stringify({ sections: {
-    hero: { type: 'hero', name: 'Homepage hero', blocks: { app_review: { type: 'shopify://apps/reviews/blocks/stars/123', settings: { color: 'gold' } } }, block_order: ['app_review'] },
+    hero: { type: 'hero', name: 'Homepage hero', settings: { heading: 'Welcome' }, blocks: { app_review: { type: 'shopify://apps/reviews/blocks/stars/123', settings: { color: 'gold' } } }, block_order: ['app_review'] },
     main: { type: 'main-collection' }, app_section: { type: 'shopify://apps/reviews/sections/recommendations/456', name: 'Recommendations' },
   } }))
   await writeFile(path.join(root, 'templates', 'product.json'), HEADER + JSON.stringify({ sections: { main: { type: 'main-product' } } }))
@@ -37,7 +37,7 @@ describe('resolveSections', () => {
     expect(result['shopify-section-feed-artists']).toMatchObject({ file: 'sections/feed-artists.liquid', line: 1, kind: 'section' })
     expect(result['shopify-section-feed-artists']).toMatchObject({ origin: 'static' })
     expect(result['shopify-section-feed-artists']?.instanceKey).toBeUndefined()
-    expect(result['shopify-section-template--123__hero']).toMatchObject({ file: 'sections/hero.liquid', origin: 'template', instanceKey: 'hero', instanceName: 'Homepage hero', owner: 'index', ownerFilename: 'templates/index.json' })
+    expect(result['shopify-section-template--123__hero']).toMatchObject({ file: 'sections/hero.liquid', origin: 'template', instanceKey: 'hero', instanceName: 'Homepage hero', settings: { heading: 'Welcome' }, owner: 'index', ownerFilename: 'templates/index.json' })
     expect(result['shopify-section-sections--456__header']).toMatchObject({ file: 'sections/header.liquid', origin: 'section-group', instanceKey: 'header', owner: 'header-group', ownerFilename: 'sections/header-group.json' })
   })
 

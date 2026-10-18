@@ -100,6 +100,24 @@ describe('browser panel', () => {
     await vi.waitFor(() => expect(rpcCall).toHaveBeenCalledWith('shopify-devtools:open-in-editor', { file: 'sections/hero.liquid', line: 1 }))
   })
 
+  it('lists the schema settings collapsed, with stored values and defaults', async () => {
+    rpcCall.mockImplementation(async (name) => name === 'shopify-devtools:schema'
+      ? [{ id: 'heading', type: 'text', label: 'Heading', default: 'Hello' }, { id: 'height', type: 'range', label: 't:sections.hero.settings.height.label', default: 40 }]
+      : { ok: true })
+    getInspectorController().invalidateSections()
+    const shadow = document.querySelector('shopify-liquid-devtools')?.shadowRoot
+    ;(shadow?.querySelector('#tree button') as HTMLButtonElement).click()
+    await vi.waitFor(() => expect(shadow?.querySelector('details.settings-panel')).toBeTruthy())
+    const panel = shadow?.querySelector('details.settings-panel') as HTMLDetailsElement
+    expect(panel.open).toBe(false)
+    expect(rpcCall).toHaveBeenCalledWith('shopify-devtools:schema', { file: 'sections/hero.liquid' })
+    expect(panel.querySelector('summary')?.textContent).toBe('Settings (2)')
+    expect([...panel.querySelectorAll('dt')].map((dt) => dt.textContent)).toEqual(['Heading', 'height'])
+    expect([...panel.querySelectorAll('dd')].map((dd) => dd.textContent)).toEqual(['Hello', '40'])
+    expect(panel.querySelectorAll('dd.default')).toHaveLength(2)
+    rpcCall.mockImplementation(async () => ({ ok: true }))
+  })
+
   it('highlights the page component while hovering a tree entry, without selecting it', () => {
     const controller = getInspectorController()
     controller.clearHighlight()
@@ -296,7 +314,7 @@ describe('pages without markers', () => {
     const shadow = document.querySelector('shopify-liquid-devtools')?.shadowRoot
     await vi.waitFor(() => { expandAll(shadow); expect(shadow?.querySelectorAll('.tree-item')).toHaveLength(3) })
     ;(shadow?.querySelectorAll('.tree-item')[1] as HTMLButtonElement).click()
-    expect(shadow?.querySelector('.settings')?.textContent).toContain('"heading": "Hello"')
+    await vi.waitFor(() => expect(shadow?.querySelector('.settings')?.textContent).toContain('"heading": "Hello"'))
     ;(shadow?.querySelector('.open-source') as HTMLButtonElement).click()
     await vi.waitFor(() => expect(rpcCall).toHaveBeenCalledWith('shopify-devtools:open-in-editor', { file: 'templates/index.json', line: 42 }))
     ;(shadow?.querySelectorAll('.tree-item')[2] as HTMLButtonElement).click()

@@ -447,12 +447,35 @@ export class ShopifyDevtools extends HTMLElement {
     card.append(heading)
     if (actions.childElementCount) card.append(actions)
     card.append(fields)
-    if (node.settings) {
-      const settingsHeading = document.createElement('h3'); settingsHeading.textContent = 'Block settings'
-      const settings = document.createElement('pre'); settings.className = 'settings'; settings.textContent = JSON.stringify(node.settings, null, 2)
-      card.append(settingsHeading, settings)
-    }
     details.append(card)
+    if (node.kind !== 'snippet' && !node.app) void this.renderSettings(node, card)
+  }
+
+  /** Adds a collapsed list of the settings declared in the schema, with the value stored for this instance or the default. */
+  async renderSettings(node: ComponentNode, card: HTMLElement): Promise<void> {
+    const schema = await getInspectorController().schema(node.file)
+    const values = node.settings
+    if (!card.isConnected || (!schema.length && !values)) return
+    const panel = document.createElement('details'); panel.className = 'settings-panel'
+    const summary = document.createElement('summary'); summary.textContent = `Settings (${schema.length || Object.keys(values ?? {}).length})`
+    panel.append(summary)
+    if (schema.length) {
+      const list = document.createElement('dl'); list.className = 'setting-list'
+      for (const setting of schema) {
+        const custom = values !== undefined && setting.id in values
+        const value = custom ? values[setting.id] : setting.default
+        const dt = document.createElement('dt'); dt.textContent = setting.label.startsWith('t:') ? setting.id : setting.label
+        dt.title = `${setting.id} (${setting.type})`
+        const dd = document.createElement('dd'); dd.textContent = value === undefined || value === '' ? '—' : typeof value === 'string' ? value : JSON.stringify(value)
+        if (!custom) dd.classList.add('default')
+        list.append(dt, dd)
+      }
+      panel.append(list)
+    } else {
+      const pre = document.createElement('pre'); pre.className = 'settings'; pre.textContent = JSON.stringify(values, null, 2)
+      panel.append(pre)
+    }
+    card.append(panel)
   }
 
   async copyValue(value: string): Promise<void> {
@@ -582,7 +605,7 @@ main{min-width:0;overflow:auto;padding:16px}.tree-empty{list-style:none;padding:
 .card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px}
 .detail-heading{display:flex;align-items:center;gap:10px;padding-bottom:12px;border-bottom:1px solid var(--border)}.detail-heading>div{display:flex;flex-direction:column}.detail-heading strong{font-weight:650}
 dl{display:grid;grid-template-columns:90px minmax(0,1fr);gap:8px 14px;margin:14px 0}dt{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere;font-family:ui-monospace,SFMono-Regular,'SF Mono',Consolas,'Liberation Mono',Menlo,monospace;font-size:13px}.copy{float:right;margin-left:8px;border:1px solid var(--border);border-radius:5px;padding:1px 6px;background:transparent;color:var(--muted);cursor:pointer;font:inherit;font-size:11px}.copy:hover{background:var(--raised);color:var(--text)}
-.detail-actions{display:flex;gap:8px;margin-top:14px}.open-editor,.open-source{text-decoration:none;display:inline-block;border:0;background:var(--primary-bg);color:var(--primary-text);border-radius:8px;padding:6px 12px;font-weight:550;cursor:pointer;transition:background .15s var(--ease)}.open-editor:hover{background:var(--primary-hover)}.open-source{border:1px solid var(--border);background:transparent;color:var(--text)}.open-source:hover{background:var(--raised)}.open-editor:disabled,.open-source:disabled{opacity:.6;cursor:wait}.card h3{margin:16px 0 6px;font-size:12px;font-weight:650}.settings{max-height:180px;overflow:auto;margin:0;padding:10px;border:1px solid var(--border);border-radius:7px;background:var(--raised);color:var(--text);font:12px/18px ui-monospace,SFMono-Regular,'SF Mono',Consolas,'Liberation Mono',Menlo,monospace;white-space:pre-wrap}
+.detail-actions{display:flex;gap:8px;margin-top:14px}.open-editor,.open-source{text-decoration:none;display:inline-block;border:0;background:var(--primary-bg);color:var(--primary-text);border-radius:8px;padding:6px 12px;font-weight:550;cursor:pointer;transition:background .15s var(--ease)}.open-editor:hover{background:var(--primary-hover)}.open-source{border:1px solid var(--border);background:transparent;color:var(--text)}.open-source:hover{background:var(--raised)}.open-editor:disabled,.open-source:disabled{opacity:.6;cursor:wait}.settings-panel{margin-top:16px}.settings-panel summary{cursor:pointer;font-size:12px;font-weight:650}.setting-list{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:4px 12px;margin:8px 0 0;font-size:12px}.setting-list dt{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.setting-list dd{margin:0;overflow-wrap:anywhere}.setting-list dd.default{color:var(--muted)}.card h3{margin:16px 0 6px;font-size:12px;font-weight:650}.settings{max-height:180px;overflow:auto;margin:0;padding:10px;border:1px solid var(--border);border-radius:7px;background:var(--raised);color:var(--text);font:12px/18px ui-monospace,SFMono-Regular,'SF Mono',Consolas,'Liberation Mono',Menlo,monospace;white-space:pre-wrap}
 #highlights{position:fixed;inset:0;pointer-events:none}.highlight{position:fixed;box-sizing:border-box;border:2px solid var(--accent);background:var(--accent-soft);border-radius:2px;box-shadow:0 0 0 1px #fff3 inset}
 #toast{position:fixed;left:50%;bottom:72px;max-width:min(460px,calc(100vw - 30px));transform:translate(-50%,8px);opacity:0;visibility:hidden;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);box-shadow:var(--shadow-float);transition:all .15s var(--ease)}#toast.show{opacity:1;visibility:visible;transform:translate(-50%,0)}
 #toast[data-type=success]{background:var(--ok-bg);border-color:var(--ok-border);color:var(--ok-text)}#toast[data-type=error]{background:var(--err-bg);border-color:var(--err-border);color:var(--err-text)}
