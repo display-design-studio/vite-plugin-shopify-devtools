@@ -46,7 +46,7 @@ The browser client must be injected through a JavaScript entry. The plugin norma
 
 ## Using the panel
 
-Open **Shopify Liquid** in the Vite DevTools dock, then choose **Inspect page** to select a rendered component. The tree can be searched by component name, path, kind, or template metadata. Select an entry to inspect it; press Enter or use the details action to open its source. Paths, locations, and available Shopify IDs can also be copied. Hovering an entry highlights it on the page, and **Open in Theme Editor** opens the previewed theme in the Shopify admin. The details also offer a ready-to-paste Liquid tag, and `Alt+Shift+L` toggles the inspector.
+Open **Shopify Liquid** in the Vite DevTools dock, then choose **Inspect page** to select a rendered component. The tree can be searched by component name, path, kind, or template metadata. Select an entry to inspect it; press Enter or use the details action to open its source. Paths, locations, and available Shopify IDs can also be copied. Hovering an entry highlights it on the page, and **Open in Theme Editor** opens the previewed theme in the Shopify admin. The details also offer a ready-to-paste Liquid tag, a collapsed **Settings** list shows the section or block settings from its `{% schema %}` with their current values, and `Alt+Shift+L` toggles the inspector.
 
 On first connection, Vite DevTools may show **Unauthorized** while Vite prints a one-time code and authorization link. Authorize the browser, then reload the storefront if it does not reconnect. Trust is stored in that browser and may need to be renewed after clearing site data, changing hostname, updating DevTools, or revoking trust.
 

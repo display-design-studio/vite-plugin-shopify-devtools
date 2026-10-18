@@ -2,6 +2,7 @@ import type { DockClientScriptContext } from '@vitejs/devtools-kit/client'
 import type { ComponentSource } from './protocol.js'
 import type { BlockInstance, Expectation } from './graph.js'
 import { compareTrees, inferNodes, type InferenceConfidence, type InferenceReport, type MissingSnippet } from './infer.js'
+import type { SchemaSetting } from './schema.js'
 import type { ResolvedSection } from './sections.js'
 
 /** Kept deliberately low so the highlight always renders beneath the DevTools UI. */
@@ -196,6 +197,7 @@ export class InspectorController {
   diagnostics: MissingSnippet[] = []
   #sectionRun = 0
   #sectionCache = new Map<string, ResolvedSection | undefined>()
+  #schemaCache = new Map<string, Promise<SchemaSetting[]>>()
   #overlay = document.createElement('div')
   #listeners = new Set<Listener>()
   #highlighted?: ComponentNode
@@ -216,8 +218,19 @@ export class InspectorController {
   setRpc(rpc: unknown): void { this.rpc = rpc as RpcCaller }
   invalidateSections(): void {
     this.#sectionCache.clear()
+    this.#schemaCache.clear()
     this.#sectionRun++
     this.refresh()
+  }
+  /** Settings declared in the schema of a section or block file, fetched once per file until the sources change. */
+  schema(file: string): Promise<SchemaSetting[]> {
+    if (!this.rpc) return Promise.resolve([])
+    let pending = this.#schemaCache.get(file)
+    if (!pending) {
+      pending = Promise.resolve(this.rpc.call('shopify-devtools:schema', { file })).then((value) => Array.isArray(value) ? value as SchemaSetting[] : [], () => [])
+      this.#schemaCache.set(file, pending)
+    }
+    return pending
   }
   setNavigationGuard(isBlocked: () => boolean): void { this.#isBlocked = isBlocked }
   subscribe(listener: Listener): () => void { this.#listeners.add(listener); listener(this); return () => this.#listeners.delete(listener) }
