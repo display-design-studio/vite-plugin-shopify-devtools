@@ -334,7 +334,10 @@ export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): P
       server.watcher?.on('add', changed)
       server.watcher?.on('change', changed)
       server.watcher?.on('unlink', changed)
-      return () => { void closeInstrumentation() }
+      // Not a configureServer post hook: Vite runs that once at startup, which removed the mirror right after it was created.
+      // The removal is awaited inside close() so a process that exits right after closing the server cannot skip it.
+      const closeServer = server.close.bind(server)
+      server.close = async () => { try { await closeInstrumentation() } finally { await closeServer() } }
     },
     async configResolved(config) {
       serve = config.command === 'serve'
