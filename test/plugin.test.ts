@@ -1,4 +1,5 @@
-import { mkdir, mkdtemp, realpath, writeFile } from 'node:fs/promises'
+import { EventEmitter } from 'node:events'
+import { mkdir, mkdtemp, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import os from 'node:os'
 import path from 'node:path'
@@ -142,7 +143,8 @@ describe('Vite plugin', () => {
     ;(plugin.configureServer as (server: unknown) => void)({
       config: { logger: { warn: vi.fn() }, server: {}, devtools: undefined },
       resolvedUrls: { local: ['http://localhost:5173/'], network: [] },
-      httpServer: { listening: false, once: (_event: string, handler: () => void) => { listening = handler } },
+      httpServer: { listening: false, once: (event: string, handler: () => void) => { if (event === 'listening') listening = handler } },
+      close: vi.fn(async () => {}),
     })
     listening?.()
     expect(update).toHaveBeenCalledTimes(2)
@@ -155,6 +157,34 @@ describe('Vite plugin', () => {
     expect(update).toHaveBeenCalledTimes(3)
   })
 
+  it('keeps the copied theme mirror while the server runs and removes it before close() resolves', async () => {
+    const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'shopify-devtools-lifecycle-')))
+    await mkdir(path.join(root, 'sections'), { recursive: true })
+    await writeFile(path.join(root, 'sections', 'hero.liquid'), '<section>hero</section>')
+    const plugin = shopifyDevtools({ entry: 'frontend/theme.ts', themeRoot: root, instrument: 'copy' })
+    await (plugin.configResolved as (config: unknown) => Promise<void>)({ command: 'serve', root, build: {}, logger: { info: vi.fn(), warn: vi.fn() } })
+    const mirror = path.join(root, '.shopify-devtools', 'theme')
+    const httpServer = Object.assign(new EventEmitter(), { listening: true })
+    const closeServer = vi.fn(async () => {})
+    const server = {
+      config: { root, build: {}, logger: { warn: vi.fn() }, server: {}, devtools: shopifyDevtoolsConfig },
+      resolvedUrls: { local: ['http://localhost:5173/'], network: [] },
+      httpServer,
+      close: closeServer,
+    }
+    const afterSetup = (plugin.configureServer as (server: unknown) => unknown)(server)
+    // A function returned from configureServer is a post hook that Vite runs once at startup.
+    if (typeof afterSetup === 'function') afterSetup()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect((await stat(mirror)).isDirectory()).toBe(true)
+    expect(await readFile(path.join(mirror, 'sections', 'hero.liquid'), 'utf8')).toContain('hero')
+
+    await server.close()
+    // The mirror is gone by the time close() resolves, and the original close still ran.
+    await expect(stat(mirror)).rejects.toThrow()
+    expect(closeServer).toHaveBeenCalledTimes(1)
+  })
+
   it('broadcasts cache invalidation only for section-resolution theme sources', async () => {
     const plugin = shopifyDevtools()
     const broadcast = vi.fn()
@@ -163,7 +193,8 @@ describe('Vite plugin', () => {
     ;(plugin.configureServer as (server: unknown) => void)({
       config: { root: '/theme', build: { outDir: 'assets' }, logger: { warn: vi.fn() }, server: {}, devtools: shopifyDevtoolsConfig },
       resolvedUrls: { local: ['http://localhost:5173/'], network: [] },
-      httpServer: { listening: true },
+      httpServer: { listening: true, once: vi.fn() },
+      close: vi.fn(async () => {}),
       watcher: { on: (event: string, handler: (file: string) => void) => { handlers.set(event, handler) } },
     })
     for (const file of ['/theme/templates/index.json', '/theme/templates/customers/account.json', '/theme/sections/header-group.json', '/theme/sections/hero.liquid', '/theme/blocks/text.liquid', '/theme/snippets/card.liquid']) handlers.get('change')?.(file)
