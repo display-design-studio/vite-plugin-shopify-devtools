@@ -31,7 +31,7 @@ function inUnsafeHtmlContext(source: string, offset: number): boolean {
   const tokens = [...prefix.matchAll(/<\/?(script|style)(?:\s[^>]*)?>|\{%\s*(schema|javascript|stylesheet)\b|\{%\s*end(schema|javascript|stylesheet)\s*%\}/gi)]
   let unsafe = false
   for (const token of tokens) {
-    if (/^<\//.test(token[0]) || /\{%\s*end/i.test(token[0])) unsafe = false
+    if (token[0].startsWith('</') || /\{%\s*end/i.test(token[0])) unsafe = false
     else unsafe = true
   }
   return unsafe

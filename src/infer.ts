@@ -156,7 +156,7 @@ function inferInScopes(scopes: Element[], expectations: Expectation[], context: 
   // rendered by a card is not mistaken for a button the section rendered itself.
   const seen = new Map<Expectation, number>()
   const nodes: ComponentNode[] = []
-  const groups = [...new Set([...owners.values()])].sort((a, b) => inDocumentOrder(a.group[0], b.group[0]))
+  const groups = [...new Set(owners.values())].sort((a, b) => inDocumentOrder(a.group[0], b.group[0]))
   for (const { group, expectation } of groups) {
     if (group.some((element) => claimed.has(element)) || ambiguous.has(group)) continue
     for (const element of group) claimed.add(element)
