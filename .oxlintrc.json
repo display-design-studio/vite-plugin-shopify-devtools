@@ -1,0 +1,16 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn"],
+  "categories": { "correctness": "error" },
+  "ignorePatterns": ["dist/**", "coverage/**", "playground/**"],
+  "rules": {
+    "unicorn/prefer-string-starts-ends-with": "error",
+    "unicorn/no-useless-spread": "error"
+  },
+  "overrides": [
+    {
+      "files": ["test/**/*.ts"],
+      "rules": { "no-unsafe-optional-chaining": "off" }
+    }
+  ]
+}

@@ -106,7 +106,7 @@ export function componentTree(root: ParentNode = document): ComponentNode[] {
         if (node.parent) node.parent.children.push(node); else roots.push(node)
         stack.push(node)
       } catch { /* Ignore malformed comments from unrelated sources. */ }
-    } else if (/^shopify-devtools:end:/.test(value)) {
+    } else if (value.startsWith('shopify-devtools:end:')) {
       const node = stack.pop()
       const start = node?.start
       if (!node || !start) continue
