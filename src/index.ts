@@ -231,10 +231,16 @@ export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): P
   let broadcastSourcesChanged: (() => void) | undefined
   let instrumentation: ThemeMirror | InPlaceInstrumentation | undefined
   let instrumentationRoot: string | undefined
-  const closeInstrumentation = async (): Promise<void> => {
-    const active = instrumentation
-    instrumentation = undefined
-    await active?.close()
+  // Shared by every caller: a second call during a close (for example Vite's own signal handler and another plugin's
+  // handler both closing the server) must wait for the removal already in progress instead of returning at once.
+  let closing: Promise<void> | undefined
+  const closeInstrumentation = (): Promise<void> => {
+    closing ??= (async () => {
+      const active = instrumentation
+      instrumentation = undefined
+      await active?.close()
+    })()
+    return closing
   }
   const fixDock = (entry: DockEntry): void => {
     const url = origin ? absoluteDockUrl(entry, origin) : undefined
@@ -349,9 +355,11 @@ export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): P
       const themeRoot = path.resolve(options.themeRoot ?? resolveThemeRoot(config))
       if (options.instrument === 'copy') {
         instrumentationRoot = path.join(themeRoot, '.shopify-devtools', 'theme')
+        closing = undefined
         instrumentation = await createThemeMirror(themeRoot, { root: instrumentationRoot })
         config.logger.info(`[shopify-devtools] Full-mode mirror ready at ${instrumentationRoot}. Run Shopify CLI with SHOPIFY_FLAG_PATH=${instrumentationRoot}`)
       } else if (options.instrument === 'in-place') {
+        closing = undefined
         instrumentation = await instrumentInPlace(themeRoot)
         config.logger.warn('[shopify-devtools] Full mode is instrumenting theme Liquid files in place. Originals are journalled and will be restored when Vite exits.')
       } else if (await recoverInPlace(themeRoot)) {
