@@ -8,6 +8,26 @@ export type CheckStatus = 'ok' | 'warn' | 'fail'
 export interface Check { name: string, status: CheckStatus, message: string }
 
 const THEME_DIRECTORIES = ['layout', 'sections', 'snippets', 'templates']
+const THEME_PLUGIN = '@display-studio/vite-plugin-shopify-theme'
+/** First version of the theme plugin that closes the Vite server on SIGINT and SIGTERM, so this plugin can remove its mirror. */
+const THEME_PLUGIN_MINIMUM: [number, number, number] = [0, 7, 1]
+
+/** Reads an installed package's version from the nearest node_modules at or above `root`, without importing it. */
+export function installedVersion(root: string, name: string): string | undefined {
+  for (let directory = root; ; directory = path.dirname(directory)) {
+    try { return JSON.parse(readFileSync(path.join(directory, 'node_modules', name, 'package.json'), 'utf8')).version as string } catch { /* keep looking upward */ }
+    if (path.dirname(directory) === directory) return undefined
+  }
+}
+
+export function versionAtLeast(version: string, minimum: [number, number, number]): boolean {
+  const parts = /^(\d+)\.(\d+)\.(\d+)/.exec(version)?.slice(1).map(Number)
+  if (!parts) return false
+  for (let index = 0; index < 3; index += 1) {
+    if (parts[index] !== minimum[index]) return (parts[index] as number) > minimum[index]
+  }
+  return true
+}
 
 export function gitignoreCovers(source: string): boolean {
   return source.split(/\r?\n/).some((line) => /^\/?\.shopify-devtools(\/.*)?$/.test(line.trim()))
@@ -22,6 +42,13 @@ export function diagnose(root: string, config: { root: string, devtools?: unknow
   const configFile = findViteConfig(root)
   if (!configFile) add('Vite config', 'fail', 'No vite.config.{ts,mts,js,mjs} in the current directory. Run `shopify-devtools init` in your theme.')
   else add('Vite config', 'ok', path.basename(configFile))
+  const themePlugin = installedVersion(root, THEME_PLUGIN)
+  if (themePlugin) {
+    const current = versionAtLeast(themePlugin, THEME_PLUGIN_MINIMUM)
+    add('Theme plugin', current ? 'ok' : 'warn', current
+      ? `vite-plugin-shopify-theme ${themePlugin}`
+      : `vite-plugin-shopify-theme ${themePlugin} ends the process before Vite closes the server, so the mirror can stay on disk after Ctrl+C. Install 0.7.1 or later (\`@latest\`; a 0.x caret range does not include the next minor).`)
+  }
   if (config instanceof Error) {
     add('Config loads', 'fail', `Vite could not resolve the config: ${config.message}`)
     return checks

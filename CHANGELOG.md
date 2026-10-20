@@ -4,6 +4,14 @@ All notable changes to this project are documented here. This project follows [K
 
 ## [Unreleased]
 
+### Added
+
+- `shopify-devtools doctor` warns when an installed `@display-studio/vite-plugin-shopify-theme` is older than 0.7.1, which ends the process before Vite closes the server so the mirror can stay on disk after Ctrl+C.
+
+### Documentation
+
+- README: using the plugin with `vite-shopify-theme dev` (`SHOPIFY_FLAG_PATH=.shopify-devtools/theme`), the minimum versions of both plugins, and a troubleshooting entry for Shopify CLI's `A path was explicitly provided but doesn't exist`, including why a `^0.4.0` range does not reach 0.5.0.
+
 ## [0.5.0] - 2026-10-20
 
 ### Fixed

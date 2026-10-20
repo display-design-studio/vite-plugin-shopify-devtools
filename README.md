@@ -84,6 +84,8 @@ Add `.shopify-devtools/` to `.gitignore`, start Vite first, and point Shopify CL
 SHOPIFY_FLAG_PATH=.shopify-devtools/theme shopify theme dev
 ```
 
+With [`@display-studio/vite-plugin-shopify-theme`](https://github.com/display-design-studio/vite-plugin-shopify-theme), `vite-shopify-theme dev` starts Vite first and Shopify CLI once the dev server is ready, so the same variable goes in front of it: `SHOPIFY_FLAG_PATH=.shopify-devtools/theme vite-shopify-theme dev`. Use devtools 0.5.0 or later and theme plugin 0.7.1 or later: earlier devtools versions removed the mirror when the server started, and earlier theme plugin versions ended the process before the mirror could be removed after Ctrl+C.
+
 You may instead configure that path in `shopify.theme.toml`, though an explicit `--path` or `SHOPIFY_FLAG_PATH` is more reliable across Shopify CLI versions.
 
 Use `instrument: 'in-place'` only when Shopify CLI must serve the source directory. It temporarily rewrites Liquid and uses `.shopify-devtools/in-place-journal.json` to restore originals and recover after crashes. Do not delete that journal while recovery is pending; startup stops rather than overwriting a file changed independently.
@@ -114,7 +116,11 @@ Other shipped helpers and renderer files are implementation details and may chan
 
 ### Not sure what is wrong
 
-Run `npx shopify-devtools doctor` in the theme directory. It reports the Vite version, DevTools preset, theme root, entry, `.gitignore` and store configuration.
+Run `npx shopify-devtools doctor` in the theme directory. It reports the Vite version, DevTools preset, theme root, entry, `.gitignore` and store configuration, and warns when an installed `vite-plugin-shopify-theme` is older than 0.7.1.
+
+### Shopify CLI says "A path was explicitly provided but doesn't exist"
+
+`SHOPIFY_FLAG_PATH=.shopify-devtools/theme` points at the mirror, and the mirror was not there when Shopify CLI started. Before 0.5.0 the plugin removed the mirror as soon as the dev server started, so update to 0.5.0 or later. Versions are `0.x`, so a range such as `^0.4.0` never includes 0.5.0 and a plain `bun update` or `npm update` keeps the old one; install the new version explicitly, for example `bun add -d @display-studio/vite-plugin-shopify-devtools@latest`. If you use `vite-shopify-theme dev`, it prints a warning that names this cause when the folder is missing.
 
 ### Connection metadata returns 404
 
