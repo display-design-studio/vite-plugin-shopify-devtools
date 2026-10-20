@@ -4,6 +4,8 @@ All notable changes to this project are documented here. This project follows [K
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-20
+
 ### Fixed
 
 - Closing the server twice at once, as happens with Vite's SIGTERM handler plus another plugin's handler, no longer lets the second caller return before the `.shopify-devtools/theme` mirror is removed. Concurrent closes now share one removal, so the process cannot exit with the mirror still on disk.
@@ -57,7 +59,8 @@ All notable changes to this project are documented here. This project follows [K
 
 - Initial dock, Liquid inspector, editor integration, authenticated RPC, CLI wrapper, and full-mode instrumentation.
 
-[Unreleased]: https://github.com/display-design-studio/vite-plugin-shopify-devtools/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/display-design-studio/vite-plugin-shopify-devtools/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/display-design-studio/vite-plugin-shopify-devtools/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/display-design-studio/vite-plugin-shopify-devtools/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/display-design-studio/vite-plugin-shopify-devtools/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/display-design-studio/vite-plugin-shopify-devtools/compare/v0.1.0...v0.2.0
