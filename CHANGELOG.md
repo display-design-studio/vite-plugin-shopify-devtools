@@ -6,6 +6,7 @@ All notable changes to this project are documented here. This project follows [K
 
 ### Fixed
 
+- Closing the server twice at once, as happens with Vite's SIGTERM handler plus another plugin's handler, no longer lets the second caller return before the `.shopify-devtools/theme` mirror is removed. Concurrent closes now share one removal, so the process cannot exit with the mirror still on disk.
 - `instrument: 'copy'` no longer deletes the `.shopify-devtools/theme` mirror as soon as the dev server starts. The mirror was closed from a `configureServer` post hook, which Vite runs once at startup, so `SHOPIFY_FLAG_PATH=.shopify-devtools/theme` pointed at a missing folder and Shopify CLI failed with `A path was explicitly provided but doesn't exist`. The mirror is now closed when the server closes.
 
 ### Added

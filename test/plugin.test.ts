@@ -185,6 +185,30 @@ describe('Vite plugin', () => {
     expect(closeServer).toHaveBeenCalledTimes(1)
   })
 
+  it('makes a second close wait for the mirror removal already in progress', async () => {
+    const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'shopify-devtools-double-close-')))
+    await mkdir(path.join(root, 'sections'), { recursive: true })
+    await writeFile(path.join(root, 'sections', 'hero.liquid'), '<section>hero</section>')
+    const plugin = shopifyDevtools({ entry: 'frontend/theme.ts', themeRoot: root, instrument: 'copy' })
+    await (plugin.configResolved as (config: unknown) => Promise<void>)({ command: 'serve', root, build: {}, logger: { info: vi.fn(), warn: vi.fn() } })
+    const mirror = path.join(root, '.shopify-devtools', 'theme')
+    const server = {
+      config: { root, build: {}, logger: { warn: vi.fn() }, server: {}, devtools: shopifyDevtoolsConfig },
+      resolvedUrls: { local: ['http://localhost:5173/'], network: [] },
+      httpServer: Object.assign(new EventEmitter(), { listening: true }),
+      close: vi.fn(async () => {}),
+    }
+    ;(plugin.configureServer as (server: unknown) => unknown)(server)
+    expect((await stat(mirror)).isDirectory()).toBe(true)
+
+    // Two closers at once, as with Vite's SIGTERM handler plus another plugin's handler.
+    const first = server.close()
+    const second = server.close()
+    await second
+    await expect(stat(mirror)).rejects.toThrow()
+    await first
+  })
+
   it('broadcasts cache invalidation only for section-resolution theme sources', async () => {
     const plugin = shopifyDevtools()
     const broadcast = vi.fn()
