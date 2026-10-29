@@ -262,7 +262,7 @@ describe('Vite plugin', () => {
       action: expect.objectContaining({ importFrom: '/@id/__x00__virtual:shopify-devtools/action' }),
     }))
     expect(rpcRegister).toHaveBeenCalledWith(expect.objectContaining({ name: 'shopify-devtools:open-in-editor', type: 'action' }))
-    expect(rpcRegister).toHaveBeenCalledWith(expect.objectContaining({ name: 'shopify-devtools:resolve-sections', type: 'action' }))
+    expect(rpcRegister).toHaveBeenCalledWith(expect.objectContaining({ name: 'shopify-devtools:resolve-sections', type: 'query', jsonSerializable: true }))
     expect(shopifyDevtoolsBranding.logo.light).toMatch(/^data:image\/svg\+xml;base64,/)
     expect(shopifyDevtoolsBranding.logo.dark).toMatch(/^data:image\/svg\+xml;base64,/)
     expect(decodeURIComponent(atob(shopifyDevtoolsBranding.logo.light.split(',')[1]))).toContain('#4AC93E')
@@ -288,13 +288,13 @@ describe('Vite plugin', () => {
     await mkdir(path.join(root, 'sections'))
     await writeFile(path.join(root, 'sections', 'feed-artists.liquid'), '<div></div>')
     const plugin = shopifyDevtools()
-    let definition: { name?: string; setup: () => { handler: (input: unknown) => Promise<unknown> } } | undefined
+    let definition: { name?: string; handler: (input: { ids: string[] }) => Promise<unknown> } | undefined
     await plugin.devtools?.setup?.({
       docks: { register: vi.fn() },
       rpc: { register: (value: typeof definition) => { if (value?.name === 'shopify-devtools:resolve-sections') definition = value } },
       viteConfig: { root, build: { outDir: 'assets' } },
     } as never)
-    expect(await definition?.setup().handler({ ids: ['shopify-section-feed-artists'] })).toMatchObject({ 'shopify-section-feed-artists': { file: 'sections/feed-artists.liquid', line: 1, kind: 'section' } })
+    expect(await definition?.handler({ ids: ['shopify-section-feed-artists'] })).toMatchObject({ 'shopify-section-feed-artists': { file: 'sections/feed-artists.liquid', line: 1, kind: 'section' } })
   })
 
   it('opens a validated file through the configured plugin launcher', async () => {

@@ -1,4 +1,5 @@
-import { defineRpcFunction } from '@vitejs/devtools-kit'
+/// <reference types="@vitejs/devtools-kit" />
+import { defineRpcFunction } from 'devframe'
 import launchEditorProcess from 'launch-editor'
 import { spawn } from 'node:child_process'
 import { readFileSync, statSync } from 'node:fs'
@@ -7,11 +8,10 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defaultAllowedOrigins, loadEnv, version as viteVersion, type Plugin, type ViteDevServer } from 'vite'
 import { INSPECT_ICON } from './inspect-icon.js'
-import { readSchema } from './schema.js'
-import { resolveSections } from './sections.js'
 import { invalidateGraph } from './graph.js'
 import { createThemeMirror, type ThemeMirror } from './mirror.js'
 import { instrumentInPlace, recoverInPlace, type InPlaceInstrumentation } from './in-place.js'
+import { createInspectionRpc } from './rpc.js'
 
 const CLIENT_ID = '\0virtual:shopify-devtools/client'
 const RENDERER_PUBLIC_ID = 'virtual:shopify-devtools/renderer'
@@ -303,20 +303,7 @@ export default function shopifyDevtools(options: ShopifyDevtoolsOptions = {}): P
             },
           }),
         }) as never)
-        context.rpc.register(defineRpcFunction({
-          name: 'shopify-devtools:resolve-sections',
-          type: 'action',
-          setup: () => ({
-            handler: (input: { ids: unknown; pageType?: unknown }) => resolveSections(resolveThemeRoot(context.viteConfig), input?.ids, input?.pageType),
-          }),
-        }) as never)
-        context.rpc.register(defineRpcFunction({
-          name: 'shopify-devtools:schema',
-          type: 'action',
-          setup: () => ({
-            handler: (input: { file: unknown }) => readSchema(resolveThemeRoot(context.viteConfig), input?.file),
-          }),
-        }) as never)
+        for (const definition of createInspectionRpc(resolveThemeRoot(context.viteConfig))) context.rpc.register(definition as never)
       },
     },
     configureServer(server) {

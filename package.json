@@ -58,14 +58,18 @@
     "vite": "^8.3.0"
   },
   "dependencies": {
+    "@devframes/agentic": "^1.1.0",
     "@shopify/liquid-html-parser": "^2.9.0",
     "@vitejs/devtools": "^0.7.6",
     "@vitejs/devtools-kit": "^0.7.6",
     "chokidar": "^5.0.0",
+    "devframe": "^1.1.0",
     "ignore": "^7.0.5",
-    "launch-editor": "^2.14.1"
+    "launch-editor": "^2.14.1",
+    "valibot": "^1.1.0"
   },
   "devDependencies": {
+    "@modelcontextprotocol/client": "^2.2.0",
     "@playwright/test": "^1.63.0",
     "@types/node": "^24.0.0",
     "@types/pngjs": "^6.0.5",

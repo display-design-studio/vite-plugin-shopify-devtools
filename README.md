@@ -68,6 +68,30 @@ Keep tokens out of source control and logs. Setting `clientAuth: false` disables
 | **Default** | None | Exact sections and section groups; inferred blocks and static snippets. |
 | **Full** | `instrument: 'copy'` (recommended), `'in-place'`, or the CLI wrapper | Exact sections, theme blocks, static snippets, and nesting from markers. |
 
+## Agent access with MCP
+
+The same read-only inspection backend is available to coding agents through a DevFrame MCP server. Start it from the theme directory, or pass an explicit theme root:
+
+```sh
+shopify-devtools mcp
+shopify-devtools mcp --theme-path /absolute/path/to/theme
+```
+
+For an MCP client, configure the installed binary and use an absolute theme path:
+
+```json
+{
+  "mcpServers": {
+    "shopify-liquid-devtools": {
+      "command": "/absolute/path/to/node_modules/.bin/shopify-devtools",
+      "args": ["mcp", "--theme-path", "/absolute/path/to/theme"]
+    }
+  }
+}
+```
+
+The server exposes `shopify-devtools_resolve-sections` for mapping storefront section IDs to Liquid sources and `shopify-devtools_schema` for reading section or theme-block settings. Both tools are marked read-only. They only inspect the configured theme root; editor launching, instrumentation, arbitrary file reads, and writes are not exposed. MCP uses stdout for its protocol, so operational errors are written to stderr.
+
 Shopify's rendered HTML does not preserve the source identity of most blocks and snippets. Default mode therefore matches distinctive static output such as tags, classes, IDs, and `data-*` attributes. Inferred entries include a confidence rating, and ambiguous or invisible components are omitted rather than guessed. Dynamic markup or DOM rewritten by JavaScript may not match. Use full mode when the exact tree matters.
 
 ## Full mode

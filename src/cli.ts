@@ -10,6 +10,7 @@ import { resolveThemeRoot } from './index.js'
 import { createThemeMirror } from './mirror.js'
 import { formatChecks, runDoctor } from './doctor.js'
 import { initProject, MANUAL_SETUP } from './init.js'
+import { createShopifyDevframe } from './devframe.js'
 
 export function executable(name: string, platform = process.platform): string {
   return platform === 'win32' ? `${name}.cmd` : name
@@ -20,6 +21,18 @@ function run(command: string, args: string[], cwd: string): ChildProcess {
 }
 
 export interface CliOptions { themePath?: string; vitePort?: number; shopifyFlags: string[] }
+
+export function parseMcpArgs(args: string[]): { themePath?: string } {
+  let themePath: string | undefined
+  for (let index = 0; index < args.length; index++) {
+    const flag = args[index]
+    if (flag !== '--theme-path') throw new Error(`Unknown MCP option: ${flag}`)
+    const value = args[++index]
+    if (!value) throw new Error('--theme-path requires a directory')
+    themePath = value
+  }
+  return { themePath }
+}
 
 export function parseCliArgs(args: string[]): CliOptions {
   const options: CliOptions = { shopifyFlags: [] }
@@ -68,8 +81,27 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     if (result.manual) { console.error(`${result.manual}\nAdd this to your Vite config manually:\n\n${MANUAL_SETUP}`); process.exitCode = 1 }
     return
   }
+  if (command === 'mcp') {
+    const { createMcpServer } = await import('devframe/adapters/mcp')
+    const options = parseMcpArgs(rawFlags)
+    const themeRoot = realpathSync(path.resolve(options.themePath ?? process.cwd()))
+    const server = await createMcpServer(createShopifyDevframe({ themeRoot }), {
+      transport: 'stdio',
+      serverName: 'shopify-liquid-devtools',
+      exposeSharedState: false,
+    })
+    let stopping = false
+    const stop = (): void => {
+      if (stopping) return
+      stopping = true
+      void server.stop()
+    }
+    process.once('SIGINT', stop)
+    process.once('SIGTERM', stop)
+    return
+  }
   if (command !== 'dev') {
-    console.error('Usage: shopify-devtools <dev|doctor|init>\n  dev [--theme-path path] [--vite-port port] [shopify theme dev flags]\n  doctor   check the setup\n  init     add the plugin to vite.config and .gitignore')
+    console.error('Usage: shopify-devtools <dev|doctor|init|mcp>\n  dev [--theme-path path] [--vite-port port] [shopify theme dev flags]\n  doctor   check the setup\n  init     add the plugin to vite.config and .gitignore\n  mcp [--theme-path path]   serve read-only inspection tools over stdio')
     process.exitCode = 1
     return
   }
