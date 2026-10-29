@@ -6,6 +6,7 @@ All notable changes to this project are documented here. This project follows [K
 
 ### Added
 
+- `shopify-devtools mcp` exposes section resolution and Liquid schema inspection as read-only DevFrame tools for coding agents, with an optional `--theme-path` override.
 - `shopify-devtools doctor` warns when an installed `@display-studio/vite-plugin-shopify-theme` is older than 0.7.1, which ends the process before Vite closes the server so the mirror can stay on disk after Ctrl+C.
 
 ### Documentation

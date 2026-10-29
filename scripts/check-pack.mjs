@@ -4,6 +4,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { Client } from '@modelcontextprotocol/client'
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const packageName = '@display-studio/vite-plugin-shopify-devtools'
@@ -66,12 +68,15 @@ function validateMetadata(manifest) {
   strictEqual(manifest.homepage, 'https://github.com/display-design-studio/vite-plugin-shopify-devtools#readme', 'homepage metadata differs')
   deepStrictEqual(manifest.bugs, { url: 'https://github.com/display-design-studio/vite-plugin-shopify-devtools/issues' }, 'issue tracker metadata differs')
   deepStrictEqual(manifest.dependencies, {
+    '@devframes/agentic': '^1.1.0',
     '@shopify/liquid-html-parser': '^2.9.0',
     '@vitejs/devtools': '^0.7.6',
     '@vitejs/devtools-kit': '^0.7.6',
     chokidar: '^5.0.0',
+    devframe: '^1.1.0',
     ignore: '^7.0.5',
     'launch-editor': '^2.14.1',
+    valibot: '^1.1.0',
   }, 'runtime dependencies differ')
 }
 
@@ -95,7 +100,31 @@ function validateCli(consumer) {
   strictEqual(result.status, 1, `CLI without arguments exited with ${result.status}`)
   strictEqual(result.signal, null, `CLI without arguments exited on signal ${result.signal}`)
   strictEqual(result.stdout, '', 'CLI usage must not be written to stdout')
-  match(result.stderr, /^Usage: shopify-devtools <dev\|doctor\|init>\n  dev \[--theme-path path\] \[--vite-port port\] \[shopify theme dev flags\]\n  doctor .*\n  init .*\s*$/, 'CLI usage differs')
+  match(result.stderr, /^Usage: shopify-devtools <dev\|doctor\|init\|mcp>\n  dev \[--theme-path path\] \[--vite-port port\] \[shopify theme dev flags\]\n  doctor .*\n  init .*\n  mcp .*\s*$/, 'CLI usage differs')
+}
+
+async function validateMcp(consumer) {
+  const bin = join(consumer, 'node_modules', '.bin', process.platform === 'win32' ? 'shopify-devtools.cmd' : 'shopify-devtools')
+  const transport = new StdioClientTransport({
+    command: bin,
+    args: ['mcp', '--theme-path', join(root, 'test/browser/fixture/theme')],
+    cwd: consumer,
+    stderr: 'pipe',
+  })
+  const client = new Client({ name: 'package-contract-consumer', version: '1.0.0' })
+  let stderr = ''
+  transport.stderr?.on('data', chunk => { stderr += String(chunk) })
+  try {
+    await client.connect(transport)
+    const { tools } = await client.listTools()
+    deepStrictEqual(tools.map(tool => tool.name), ['shopify-devtools_resolve-sections', 'shopify-devtools_schema'])
+    strictEqual(tools.every(tool => tool.annotations?.readOnlyHint === true), true, 'MCP tools must be read-only')
+    const result = await client.callTool({ name: 'shopify-devtools_schema', arguments: { file: 'sections/hero.liquid' } })
+    deepStrictEqual(result.content, [{ type: 'text', text: '[]' }])
+  } finally {
+    await client.close()
+  }
+  strictEqual(stderr, '', 'MCP server wrote diagnostics to stderr during a valid session')
 }
 
 const temporary = mkdtempSync(join(tmpdir(), 'vite-plugin-shopify-devtools-pack-'))
@@ -128,6 +157,7 @@ try {
   })
   stage('imports', () => validateImports(consumer))
   stage('CLI', () => validateCli(consumer))
+  await stage('MCP', () => validateMcp(consumer))
   console.log(`Package contract passed: ${pack.files.length} files, ${pack.size} bytes, installed and imported.`)
 } finally {
   rmSync(temporary, { recursive: true, force: true })

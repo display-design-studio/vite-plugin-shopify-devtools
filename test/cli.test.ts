@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { executable, parseCliArgs } from '../src/cli.js'
+import { executable, parseCliArgs, parseMcpArgs } from '../src/cli.js'
 
 describe('CLI', () => {
   it('uses Windows command shims', () => {
@@ -14,5 +14,12 @@ describe('CLI', () => {
       shopifyFlags: ['--environment', 'dev'],
     })
     expect(() => parseCliArgs(['--vite-port', 'nope'])).toThrow('between 1 and 65535')
+  })
+
+  it('accepts only a theme path for the MCP server', () => {
+    expect(parseMcpArgs([])).toEqual({ themePath: undefined })
+    expect(parseMcpArgs(['--theme-path', 'theme'])).toEqual({ themePath: 'theme' })
+    expect(() => parseMcpArgs(['--vite-port', '5174'])).toThrow('Unknown MCP option')
+    expect(() => parseMcpArgs(['--theme-path'])).toThrow('requires a directory')
   })
 })
